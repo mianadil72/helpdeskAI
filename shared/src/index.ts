@@ -1,4 +1,5 @@
 export interface HealthResponse {
-  status: 'ok'
+  status: 'ok' | 'error'
+  database: 'ok' | 'error'
   timestamp: string
 }
