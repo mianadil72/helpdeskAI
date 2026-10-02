@@ -32,10 +32,10 @@ Based on `project-scope.md` and `tech-stack.md`. Each phase ends with something 
 - [x] Session cookie: `httpOnly`, `Secure`, `SameSite=Lax`
 - [x] Seed script that creates the initial admin from `ADMIN_EMAIL` / `ADMIN_PASSWORD`
 - [ ] Auth middleware: `requireAuth` and `requireRole('admin')`
-- [ ] Login page
-- [ ] Logout (deletes session row)
-- [ ] Protected routes on the client; redirect to login when unauthenticated
-- [ ] App layout with navigation and current user display
+- [x] Login page
+- [x] Logout (deletes session row)
+- [x] Protected routes on the client; redirect to login when unauthenticated
+- [x] App layout with navigation and current user display
 - [ ] Tests: login success/failure, protected route access, logout invalidates session
 
 **Done when:** the seeded admin can log in and out; unauthenticated users are blocked.

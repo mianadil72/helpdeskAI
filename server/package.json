@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "prisma generate && tsx watch --env-file-if-exists=.env src/index.ts",
+    "dev": "prisma generate && node --watch --import tsx --env-file-if-exists=.env src/index.ts",
     "build": "prisma generate && tsc",
     "typecheck": "prisma generate && tsc --noEmit",
     "start": "node --env-file-if-exists=.env dist/index.js",
