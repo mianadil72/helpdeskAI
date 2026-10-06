@@ -1,4 +1,4 @@
-import { Outlet, useNavigate } from 'react-router'
+import { Link, Outlet, useNavigate } from 'react-router'
 import { AppHeader } from '@/components/AppHeader'
 import { Button } from '@/components/ui/button'
 import { authClient } from '@/lib/auth-client'
@@ -15,6 +15,11 @@ export function AppLayout() {
   return (
     <div className="min-h-svh">
       <AppHeader>
+        {session?.user.role === 'admin' && (
+          <Button variant="ghost" size="sm" asChild>
+            <Link to="/users">Users</Link>
+          </Button>
+        )}
         <span className="text-sm">{session?.user.name}</span>
         <Button variant="outline" size="sm" onClick={handleSignOut}>
           Sign out
