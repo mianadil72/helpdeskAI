@@ -4,6 +4,9 @@ import { parseEnv } from 'node:util'
 
 export const serverDir = path.join(__dirname, '..', 'server')
 
+export const clientPort = 5174
+export const baseURL = `http://localhost:${clientPort}`
+
 // Settings for the test API server, read from server/.env.test (git-ignored;
 // copy server/.env.test.example). Kept apart from server/.env so tests never
 // touch the dev database.
@@ -17,6 +20,8 @@ function loadTestEnv() {
   }
   const env = parseEnv(contents) as Record<string, string | undefined>
 
+  // DATABASE_URL must stay required: the Prisma CLI also loads server/.env
+  // (prisma.config.ts), and only a value set here keeps it off the dev database.
   for (const key of ['DATABASE_URL', 'BETTER_AUTH_SECRET', 'ADMIN_EMAIL', 'ADMIN_PASSWORD']) {
     if (!env[key]) throw new Error(`${key} must be set in server/.env.test`)
   }
@@ -25,15 +30,34 @@ function loadTestEnv() {
   if (!dbName.endsWith('_test')) {
     throw new Error(`DATABASE_URL in server/.env.test must name a *_test database (got "${dbName}")`)
   }
+
+  // Mismatched URLs make sign-in fail with an unhelpful origin error.
+  const apiURL = `http://localhost:${env.PORT ?? 3001}`
+  if (env.BETTER_AUTH_URL !== apiURL) {
+    throw new Error(`BETTER_AUTH_URL in server/.env.test must be ${apiURL} (to match PORT)`)
+  }
+  const origins = (env.TRUSTED_ORIGINS ?? '').split(',').map((o) => o.trim())
+  if (!origins.includes(baseURL)) {
+    throw new Error(`TRUSTED_ORIGINS in server/.env.test must include ${baseURL}`)
+  }
   return env as Record<string, string>
 }
 
 export const testEnv = loadTestEnv()
 
 export const apiPort = Number(testEnv.PORT ?? 3001)
-export const clientPort = 5174
 export const apiURL = `http://localhost:${apiPort}`
-export const baseURL = `http://localhost:${clientPort}`
+
+// Environment for test-server processes. Playwright and child_process both
+// start from the shell's environment, so blank out variables that would change
+// the server's behaviour if exported there but missing from .env.test.
+// Add new optional server settings here (e.g. AI provider keys).
+export const serverEnv: Record<string, string> = {
+  NODE_ENV: 'test',
+  TRUST_PROXY: '',
+  ...testEnv,
+  PORT: String(apiPort),
+}
 
 // The seeded admin, for tests that need to sign in.
 export const testAdmin = {

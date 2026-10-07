@@ -4,6 +4,9 @@ import { testAdmin } from './test-env'
 // Sign-in is rate-limited to 5 requests per minute per IP, shared by the whole
 // run. This file makes exactly 2 sign-in requests (wrong password + success);
 // the validation tests are stopped client-side and never reach the server.
+// Retries are off here: CI retries would repeat those sign-ins and could turn
+// a real failure into a confusing 429.
+test.describe.configure({ retries: 0 })
 
 function countSignInRequests(page: Page) {
   const counter = { count: 0 }

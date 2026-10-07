@@ -1,5 +1,5 @@
 import { execSync, type ExecSyncOptions } from 'node:child_process'
-import { serverDir, testEnv } from './test-env'
+import { serverDir, serverEnv } from './test-env'
 
 // Truncates every table except Prisma's migration history.
 const truncateAll = `
@@ -19,7 +19,7 @@ END $$;
 export default function globalSetup() {
   const options: ExecSyncOptions = {
     cwd: serverDir,
-    env: { ...process.env, ...testEnv },
+    env: { ...process.env, ...serverEnv },
     stdio: ['pipe', 'inherit', 'inherit'],
   }
   execSync('npx prisma db execute --stdin', { ...options, input: truncateAll })

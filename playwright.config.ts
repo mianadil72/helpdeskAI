@@ -1,5 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
-import { apiPort, apiURL, baseURL, clientPort, serverDir, testEnv } from './e2e/test-env'
+import { apiURL, baseURL, clientPort, serverDir, serverEnv } from './e2e/test-env'
 
 // End-to-end tests run against their own API server (port 3001) and Vite
 // server (port 5174) backed by the database in server/.env.test, so they can
@@ -23,10 +23,12 @@ export default defineConfig({
     {
       name: 'api',
       // Applies migrations to the test database (creating it if needed), then
-      // starts the API with only the test env, never server/.env.
-      command: 'npx prisma generate && npx prisma migrate deploy && node --import tsx src/index.ts',
+      // starts the API without --env-file, so the app never reads server/.env.
+      // No `prisma generate`: it would rewrite the client a running dev server
+      // watches; `npm run dev` / `typecheck` / `build` generate it.
+      command: 'npx prisma migrate deploy && node --import tsx src/index.ts',
       cwd: serverDir,
-      env: { ...testEnv, PORT: String(apiPort) },
+      env: serverEnv,
       url: `${apiURL}/api/health`,
       reuseExistingServer: false,
       timeout: 120_000,
