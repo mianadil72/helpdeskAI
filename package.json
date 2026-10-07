@@ -9,10 +9,13 @@
   "scripts": {
     "dev": "npm run build -w shared && concurrently -n shared,server,client -c blue,green,magenta \"npm run dev -w shared\" \"npm run dev -w server\" \"npm run dev -w client\"",
     "build": "npm run build -w shared && npm run build -w server && npm run build -w client",
-    "typecheck": "npm run build -w shared && npm run typecheck -w server && npm run typecheck -w client",
-    "start": "npm run start -w server"
+    "typecheck": "npm run build -w shared && npm run typecheck -w server && npm run typecheck -w client && tsc -p e2e",
+    "start": "npm run start -w server",
+    "test:e2e": "npm run build -w shared && playwright test",
+    "test:e2e:ui": "npm run build -w shared && playwright test --ui"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "concurrently": "^10.0.5",
     "typescript": "~6.0.2"
   }

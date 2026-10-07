@@ -19,6 +19,7 @@ npm workspaces monorepo:
 shared/   @helpdesk/shared: types/schemas shared by client and server; compiles to dist/
 server/   @helpdesk/server: Express 5 API (src/app.ts = routes, src/index.ts = startup)
 client/   @helpdesk/client: React 19 + Vite 8 SPA; proxies /api to the server
+e2e/      Playwright end-to-end tests and their setup (config in playwright.config.ts at the root)
 ```
 
 ## Commands
@@ -26,11 +27,26 @@ client/   @helpdesk/client: React 19 + Vite 8 SPA; proxies /api to the server
 Run from the repo root:
 
 - `npm run dev`: builds `shared`, then runs shared watcher + server (tsx watch, port 3000) + client (Vite, port 5173 or next free)
-- `npm run typecheck`: type-check all packages
+- `npm run typecheck`: type-check all packages (including `e2e/`)
 - `npm run build`: build shared → server → client
 - `npm start`: run the built server
+- `npm run test:e2e`: build `shared`, then run the Playwright tests (`npm run test:e2e:ui` for UI mode; extra args pass through, e.g. `npm run test:e2e -- e2e/login.spec.ts`)
 
 Install packages into a workspace with `npm install <pkg> -w server` (or `-w client`, `-w shared`).
+
+## End-to-end testing (Playwright)
+
+- Tests live in `e2e/` as `*.spec.ts` and run in Chromium only. Import `test`/`expect` from `@playwright/test`; use relative URLs (`page.goto('/login')`), since `baseURL` is set.
+- Tests use a separate database, never the dev one. Settings come from `server/.env.test` (git-ignored; template in `server/.env.test.example`): its own `DATABASE_URL` (database `helpdesk_test`), `BETTER_AUTH_SECRET`, ports and test admin credentials. `e2e/test-env.ts` loads it and refuses to run unless the database name ends in `_test`.
+- `playwright.config.ts` starts two servers of its own, so tests can run while `npm run dev` is up:
+  - API on port 3001 (`server/`): runs `prisma generate` and `prisma migrate deploy` against the test database (creating it if needed), then starts the server with only the `.env.test` values (it never reads `server/.env`).
+  - Client on port 5174: Vite with `API_PROXY_TARGET=http://localhost:3001` (read by `client/vite.config.ts`; defaults to port 3000 for dev).
+- Each run starts from a clean database: `e2e/global-setup.ts` (which runs after the servers are up) truncates every table except `_prisma_migrations`, then runs `server/src/seed.ts` to create the test admin.
+- Tests run one at a time (`workers: 1`, `fullyParallel: false`) because they share one database. Create the data a test needs inside the test; don't rely on data left by another test.
+- Sign in as the seeded admin with `testAdmin` (`email`, `password`, `name`) from `e2e/test-env.ts`; never hard-code credentials.
+- Sign-in is rate-limited to 5 attempts per minute per IP in tests too. Sign in once in a setup project, save `storageState` to `e2e/.auth/` (git-ignored) and reuse it; only the login tests should sign in through the form.
+- Reports and traces go to `playwright-report/` and `test-results/` (git-ignored). On CI: 2 retries, `test.only` is rejected, and traces are kept on the first retry.
+- The Chromium browser is installed per machine: run `npx playwright install chromium` after a fresh clone or a Playwright upgrade.
 
 ## Conventions
 
