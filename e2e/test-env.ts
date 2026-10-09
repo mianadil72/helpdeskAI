@@ -65,3 +65,6 @@ export const testAdmin = {
   password: testEnv.ADMIN_PASSWORD,
   name: testEnv.ADMIN_NAME ?? 'Admin',
 }
+
+// Signed-in admin session saved by the `setup` project (e2e/auth.setup.ts).
+export const adminStorageState = path.join(__dirname, '.auth', 'admin.json')

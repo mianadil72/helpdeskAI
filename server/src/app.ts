@@ -4,6 +4,7 @@ import type { HealthResponse } from '@helpdesk/shared'
 import { auth } from './auth.js'
 import { prisma } from './db.js'
 import { requireAuth, type AuthSession } from './middleware/auth.js'
+import { usersRouter } from './routes/users.js'
 
 export const app = express()
 
@@ -50,6 +51,8 @@ app.get('/api/me', requireAuth, (_req, res) => {
     session: { expiresAt: session.expiresAt },
   })
 })
+
+app.use('/api/users', usersRouter)
 
 // Last: replaces Express's default handler, which sends stack traces outside
 // production. Client errors (e.g. malformed JSON) keep their 4xx status.

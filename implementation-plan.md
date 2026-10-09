@@ -31,7 +31,7 @@ Based on `project-scope.md` and `tech-stack.md`. Each phase ends with something 
 - [x] Integrate Better Auth with database-backed sessions in Postgres
 - [x] Session cookie: `httpOnly`, `Secure`, `SameSite=Lax`
 - [x] Seed script that creates the initial admin from `ADMIN_EMAIL` / `ADMIN_PASSWORD`
-- [ ] Auth middleware: `requireAuth` and `requireRole('admin')`
+- [x] Auth middleware: `requireAuth` and `requireRole('admin')`
 - [x] Login page
 - [x] Logout (deletes session row)
 - [x] Protected routes on the client; redirect to login when unauthenticated
@@ -42,12 +42,12 @@ Based on `project-scope.md` and `tech-stack.md`. Each phase ends with something 
 
 ## Phase 3 — User Management (Admin Only)
 
-- [ ] API: list users
+- [x] API: list users
 - [ ] API: create agent (name, email, initial password)
 - [ ] API: edit agent (name, email)
 - [ ] API: deactivate / reactivate agent (deactivation deletes all their sessions)
 - [ ] Prevent the admin from deactivating themselves
-- [ ] Users page: table of users
+- [x] Users page: table of users
 - [ ] Create / edit agent form with validation
 - [ ] Deactivate / reactivate action with confirmation
 - [ ] Hide user management from agents in the UI (server already enforces it)

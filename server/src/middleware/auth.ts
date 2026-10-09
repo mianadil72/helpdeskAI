@@ -15,3 +15,13 @@ export const requireAuth: RequestHandler = async (req, res, next) => {
   res.locals.session = result.session
   next()
 }
+
+// Admin-only gate; use after requireAuth. 403 for signed-in non-admins.
+export const requireAdmin: RequestHandler = (_req, res, next) => {
+  const { user } = res.locals as AuthSession
+  if (user.role !== 'admin') {
+    res.status(403).json({ error: 'Forbidden' })
+    return
+  }
+  next()
+}
