@@ -31,7 +31,7 @@ Based on `project-scope.md` and `tech-stack.md`. Each phase ends with something 
 - [x] Integrate Better Auth with database-backed sessions in Postgres
 - [x] Session cookie: `httpOnly`, `Secure`, `SameSite=Lax`
 - [x] Seed script that creates the initial admin from `ADMIN_EMAIL` / `ADMIN_PASSWORD`
-- [x] Auth middleware: `requireAuth` and `requireRole('admin')`
+- [x] Auth middleware: `requireAuth` and `requireAdmin`
 - [x] Login page
 - [x] Logout (deletes session row)
 - [x] Protected routes on the client; redirect to login when unauthenticated

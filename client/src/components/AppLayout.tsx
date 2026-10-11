@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { Link, Outlet, useNavigate } from 'react-router'
 import { AppHeader } from '@/components/AppHeader'
 import { Button } from '@/components/ui/button'
@@ -5,10 +6,13 @@ import { authClient } from '@/lib/auth-client'
 
 export function AppLayout() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { data: session } = authClient.useSession()
 
   async function handleSignOut() {
     await authClient.signOut()
+    // Drop cached API data so the next user in this tab never sees it.
+    queryClient.clear()
     navigate('/login', { replace: true })
   }
 

@@ -16,7 +16,12 @@ usersRouter.get('/', async (_req, res) => {
   })
 
   const body: UsersResponse = {
-    users: users.map((u) => ({ ...u, role: u.role as Role, createdAt: u.createdAt.toISOString() })),
+    users: users.map((u) => ({
+      ...u,
+      // `role` is a plain string column; anything but 'admin' is an agent.
+      role: (u.role === 'admin' ? 'admin' : 'agent') satisfies Role,
+      createdAt: u.createdAt.toISOString(),
+    })),
   }
   res.json(body)
 })
