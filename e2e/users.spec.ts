@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test'
-import { adminStorageState, testAdmin } from './test-env'
+import { adminStorageState, baseURL, testAdmin } from './test-env'
 
-// No sign-ins here (the setup project signs in), but keep retries off like
-// the other signed-in specs so CI retries can't eat the sign-in budget.
+// One sign-in here (the new agent); retries stay off so CI retries can't eat
+// the sign-in budget.
 test.describe.configure({ retries: 0 })
 
 test.describe('users page (admin)', () => {
@@ -23,7 +23,7 @@ test.describe('users page (admin)', () => {
     await expect(row.getByText('admin', { exact: true })).toBeVisible()
   })
 
-  test('creates a new agent from the modal', async ({ page }) => {
+  test('creates a new agent from the modal, who can then sign in', async ({ page, playwright }) => {
     const email = `agent-${Date.now()}@example.com`
     await page.goto('/users')
     await page.getByRole('button', { name: 'New user' }).click()
@@ -38,6 +38,19 @@ test.describe('users page (admin)', () => {
     const row = page.getByRole('row').filter({ hasText: email })
     await expect(row.getByRole('cell', { name: 'New Agent', exact: true })).toBeVisible()
     await expect(row.getByText('agent', { exact: true })).toBeVisible()
+
+    // Fresh context so the admin's cookie isn't sent. One sign-in from the budget.
+    const agent = await playwright.request.newContext({ baseURL })
+    const res = await agent.post('/api/auth/sign-in/email', {
+      data: { email, password: 'password123' },
+      headers: { Origin: baseURL },
+    })
+    expect(res.ok()).toBe(true)
+    const me = await agent.get('/api/me')
+    expect((await me.json()).user).toMatchObject({ email, name: 'New Agent', role: 'agent' })
+    // Agents can't use the admin-only users API.
+    expect((await agent.get('/api/users')).status()).toBe(403)
+    await agent.dispose()
   })
 
   test('validates the form before submitting', async ({ page }) => {
