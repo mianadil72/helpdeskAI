@@ -43,7 +43,7 @@ Based on `project-scope.md` and `tech-stack.md`. Each phase ends with something 
 ## Phase 3 — User Management (Admin Only)
 
 - [x] API: list users
-- [ ] API: create agent (name, email, initial password)
+- [x] API: create agent (name, email, initial password)
 - [ ] API: edit agent (name, email)
 - [ ] API: deactivate / reactivate agent (deactivation deletes all their sessions)
 - [ ] Prevent the admin from deactivating themselves

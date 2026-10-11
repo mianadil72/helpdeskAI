@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import type { UsersResponse } from '@helpdesk/shared'
+import { CreateUserDialog } from '@/components/CreateUserDialog'
 import { Badge } from '@/components/ui/badge'
 import {
   Table,
@@ -19,7 +20,10 @@ export function UsersPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold">Users</h1>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold">Users</h1>
+        <CreateUserDialog />
+      </div>
       {isPending && <p className="text-sm text-muted-foreground">Loading users…</p>}
       {error && (
         <p role="alert" className="text-sm text-destructive">
