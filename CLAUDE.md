@@ -30,9 +30,17 @@ Run from the repo root:
 - `npm run typecheck`: type-check all packages (including `e2e/`)
 - `npm run build`: build shared → server → client
 - `npm start`: run the built server
+- `npm test`: build `shared`, then run the Vitest unit tests for all packages (`npm run test:watch` for watch mode; `npx vitest run --project server` for one package)
 - `npm run test:e2e`: build `shared`, then run the Playwright tests (`npm run test:e2e:ui` for UI mode; extra args pass through, e.g. `npm run test:e2e -- e2e/login.spec.ts`)
 
 Install packages into a workspace with `npm install <pkg> -w server` (or `-w client`, `-w shared`).
+
+## Unit testing (Vitest)
+
+- `vitest.config.mts` at the root lists each workspace as a project; each has its own `vitest.config.ts`. Tests sit next to the code as `src/**/*.test.ts(x)`.
+- Build tsconfigs (`shared/tsconfig.json`, `server/tsconfig.json`) exclude test files so they never reach `dist/`; `tsconfig.test.json` in each type-checks everything, and `npm run typecheck` uses it.
+- Server tests use `supertest` against `app` with `../auth.js` and `../db.js` replaced by `vi.mock` (see `server/src/routes/users.test.ts`), so they need no database or env file. Use the e2e suite for real database and Better Auth behaviour.
+- Client tests run in jsdom with Testing Library (`client/src/test/setup.ts` loads the jest-dom matchers). Stub `fetch` with `vi.stubGlobal` and wrap components that use TanStack Query in a fresh `QueryClientProvider`.
 
 ## End-to-end testing (Playwright)
 

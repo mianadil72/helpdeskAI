@@ -9,14 +9,17 @@
   "scripts": {
     "dev": "npm run build -w shared && concurrently -n shared,server,client -c blue,green,magenta \"npm run dev -w shared\" \"npm run dev -w server\" \"npm run dev -w client\"",
     "build": "npm run build -w shared && npm run build -w server && npm run build -w client",
-    "typecheck": "npm run build -w shared && npm run typecheck -w server && npm run typecheck -w client && tsc -p e2e",
+    "typecheck": "npm run build -w shared && tsc -p shared/tsconfig.test.json && npm run typecheck -w server && npm run typecheck -w client && tsc -p e2e",
     "start": "npm run start -w server",
     "test:e2e": "npm run build -w shared && playwright test",
-    "test:e2e:ui": "npm run build -w shared && playwright test --ui"
+    "test:e2e:ui": "npm run build -w shared && playwright test --ui",
+    "test": "npm run build -w shared && vitest run",
+    "test:watch": "npm run build -w shared && vitest"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "concurrently": "^10.0.5",
-    "typescript": "~6.0.2"
+    "typescript": "~6.0.2",
+    "vitest": "^5.0.4"
   }
 }

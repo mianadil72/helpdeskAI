@@ -19,7 +19,7 @@ Based on `project-scope.md` and `tech-stack.md`. Each phase ends with something 
 - [ ] Add Docker Compose with PostgreSQL for local development
 - [ ] Set up Prisma and connect to the database
 - [ ] Add environment variable loading and validation with Zod (`.env.example`)
-- [ ] Set up Vitest in server and client with one passing test each
+- [x] Set up Vitest in server and client with one passing test each
 - [ ] Set up Playwright with one smoke test (app loads)
 - [ ] Initialize git repository and first commit
 
