@@ -8,9 +8,13 @@ const mocks = vi.hoisted(() => ({
   findUserByEmail: vi.fn(),
   createUser: vi.fn(),
   linkAccount: vi.fn(),
+  updatePassword: vi.fn(),
   hash: vi.fn(),
   findMany: vi.fn(),
+  findUnique: vi.fn(),
+  updateUser: vi.fn(),
   deleteUser: vi.fn(),
+  deleteMany: vi.fn(),
 }))
 
 vi.mock('../auth.js', () => ({
@@ -22,6 +26,7 @@ vi.mock('../auth.js', () => ({
         findUserByEmail: mocks.findUserByEmail,
         createUser: mocks.createUser,
         linkAccount: mocks.linkAccount,
+        updatePassword: mocks.updatePassword,
       },
       password: { hash: mocks.hash },
     }),
@@ -29,7 +34,15 @@ vi.mock('../auth.js', () => ({
 }))
 
 vi.mock('../db.js', () => ({
-  prisma: { user: { findMany: mocks.findMany, delete: mocks.deleteUser } },
+  prisma: {
+    user: {
+      findMany: mocks.findMany,
+      findUnique: mocks.findUnique,
+      update: mocks.updateUser,
+      delete: mocks.deleteUser,
+      deleteMany: mocks.deleteMany,
+    },
+  },
 }))
 
 const createdAt = new Date('2026-10-01T12:00:00.000Z')
@@ -204,5 +217,159 @@ describe('GET /api/users', () => {
     const res = await request(app).get('/api/users')
     expect(res.status).toBe(403)
     expect(mocks.findMany).not.toHaveBeenCalled()
+  })
+})
+
+describe('PATCH /api/users/:id', () => {
+  const existing = { id: 'agent-1', name: 'Sam Agent', email: 'sam@example.com', role: 'agent', createdAt }
+  const edit = { name: 'Sam Renamed', email: 'sam.renamed@example.com' }
+
+  beforeEach(() => {
+    mocks.findUnique.mockResolvedValue({ id: existing.id })
+    mocks.updateUser.mockImplementation(async ({ data }: { data: { name: string; email: string } }) => ({
+      ...existing,
+      ...data,
+    }))
+  })
+
+  it('updates the name and email and returns the user', async () => {
+    const res = await request(app).patch('/api/users/agent-1').send(edit)
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({
+      user: { ...existing, ...edit, role: 'agent', createdAt: createdAt.toISOString() },
+    })
+    expect(mocks.updateUser).toHaveBeenCalledWith({
+      where: { id: 'agent-1' },
+      data: edit,
+      select: { id: true, name: true, email: true, role: true, createdAt: true },
+    })
+    expect(mocks.updatePassword).not.toHaveBeenCalled()
+  })
+
+  it('keeps the current password when it is blank', async () => {
+    const res = await request(app)
+      .patch('/api/users/agent-1')
+      .send({ ...edit, password: '' })
+
+    expect(res.status).toBe(200)
+    expect(mocks.updatePassword).not.toHaveBeenCalled()
+  })
+
+  it('replaces the password when a new one is given', async () => {
+    const res = await request(app)
+      .patch('/api/users/agent-1')
+      .send({ ...edit, password: 'new-password-1' })
+
+    expect(res.status).toBe(200)
+    expect(mocks.hash).toHaveBeenCalledWith('new-password-1')
+    expect(mocks.updatePassword).toHaveBeenCalledWith('agent-1', 'hashed-password')
+    expect(JSON.stringify(res.body)).not.toMatch(/new-password-1|hashed-password/)
+  })
+
+  it('normalises the name and email', async () => {
+    await request(app).patch('/api/users/agent-1').send({ name: ' Sam ', email: ' SAM@Example.com ' })
+
+    expect(mocks.updateUser).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { name: 'Sam', email: 'sam@example.com' } }),
+    )
+  })
+
+  it('ignores a role in the body', async () => {
+    await request(app)
+      .patch('/api/users/agent-1')
+      .send({ ...edit, role: 'admin' })
+
+    expect(mocks.updateUser).toHaveBeenCalledWith(expect.objectContaining({ data: edit }))
+  })
+
+  it('lets a user keep their own email', async () => {
+    mocks.findUserByEmail.mockResolvedValue({ user: { id: 'agent-1' } })
+
+    const res = await request(app).patch('/api/users/agent-1').send({ name: 'Sam', email: existing.email })
+
+    expect(res.status).toBe(200)
+  })
+
+  it("returns 409 when the email belongs to someone else", async () => {
+    mocks.findUserByEmail.mockResolvedValue({ user: { id: 'someone-else' } })
+
+    const res = await request(app).patch('/api/users/agent-1').send(edit)
+
+    expect(res.status).toBe(409)
+    expect(res.body).toEqual({ error: 'A user with this email already exists' })
+    expect(mocks.updateUser).not.toHaveBeenCalled()
+  })
+
+  it('returns 400 with field errors for invalid input', async () => {
+    const res = await request(app)
+      .patch('/api/users/agent-1')
+      .send({ name: '', email: 'bad', password: 'short' })
+
+    expect(res.status).toBe(400)
+    expect(res.body.fields).toEqual({
+      name: ['Name is required'],
+      email: ['Enter a valid email address'],
+      password: ['Password must be at least 8 characters'],
+    })
+    expect(mocks.updateUser).not.toHaveBeenCalled()
+  })
+
+  it('returns 404 for an unknown user', async () => {
+    mocks.findUnique.mockResolvedValue(null)
+
+    const res = await request(app).patch('/api/users/missing').send(edit)
+
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ error: 'User not found' })
+    expect(mocks.updateUser).not.toHaveBeenCalled()
+  })
+
+  it('returns 401 when signed out and 403 for agents', async () => {
+    signInAs(null)
+    expect((await request(app).patch('/api/users/agent-1').send(edit)).status).toBe(401)
+    signInAs('agent')
+    expect((await request(app).patch('/api/users/agent-1').send(edit)).status).toBe(403)
+    expect(mocks.updateUser).not.toHaveBeenCalled()
+  })
+})
+
+describe('DELETE /api/users/:id', () => {
+  beforeEach(() => {
+    mocks.deleteMany.mockResolvedValue({ count: 1 })
+  })
+
+  it('deletes the user and returns 204', async () => {
+    const res = await request(app).delete('/api/users/agent-1')
+
+    expect(res.status).toBe(204)
+    expect(res.text).toBe('')
+    expect(mocks.deleteMany).toHaveBeenCalledWith({ where: { id: 'agent-1' } })
+  })
+
+  it("refuses to let admins delete themselves", async () => {
+    // signInAs('admin') signs in as user id 'admin-id'.
+    const res = await request(app).delete('/api/users/admin-id')
+
+    expect(res.status).toBe(403)
+    expect(res.body).toEqual({ error: "You can't delete your own account" })
+    expect(mocks.deleteMany).not.toHaveBeenCalled()
+  })
+
+  it('returns 404 for an unknown user', async () => {
+    mocks.deleteMany.mockResolvedValue({ count: 0 })
+
+    const res = await request(app).delete('/api/users/missing')
+
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ error: 'User not found' })
+  })
+
+  it('returns 401 when signed out and 403 for agents', async () => {
+    signInAs(null)
+    expect((await request(app).delete('/api/users/agent-1')).status).toBe(401)
+    signInAs('agent')
+    expect((await request(app).delete('/api/users/agent-1')).status).toBe(403)
+    expect(mocks.deleteMany).not.toHaveBeenCalled()
   })
 })

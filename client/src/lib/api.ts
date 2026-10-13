@@ -16,6 +16,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const body = (await res.json().catch(() => null)) as { error?: string } | null
     throw new ApiError(body?.error ?? `HTTP ${res.status}`, res.status)
   }
+  // 204 No Content (e.g. DELETE) has no body to parse.
+  if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
 }
 
@@ -31,4 +33,18 @@ export function apiPost<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
+}
+
+// PATCH a JSON body to our API.
+export function apiPatch<T>(path: string, body: unknown): Promise<T> {
+  return request<T>(path, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+// DELETE a resource on our API.
+export function apiDelete(path: string): Promise<void> {
+  return request<void>(path, { method: 'DELETE' })
 }

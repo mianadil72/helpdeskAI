@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import type { UsersResponse } from '@helpdesk/shared'
-import { CreateUserDialog } from '@/components/CreateUserDialog'
+import { DeleteUserButton } from '@/components/DeleteUserButton'
+import { UserFormDialog } from '@/components/UserFormDialog'
 import { Badge } from '@/components/ui/badge'
 import {
   Table,
@@ -22,7 +23,7 @@ export function UsersPage() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold">Users</h1>
-        <CreateUserDialog />
+        <UserFormDialog />
       </div>
       {isPending && <p className="text-sm text-muted-foreground">Loading users…</p>}
       {error && (
@@ -38,12 +39,15 @@ export function UsersPage() {
               <TableHead>Email</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Created</TableHead>
+              <TableHead className="w-0">
+                <span className="sr-only">Actions</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {data.users.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground">
+                <TableCell colSpan={5} className="text-center text-muted-foreground">
                   No users yet.
                 </TableCell>
               </TableRow>
@@ -58,6 +62,12 @@ export function UsersPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>{new Date(user.createdAt).toLocaleDateString()}</TableCell>
+                  <TableCell>
+                    <div className="flex justify-end gap-1">
+                      <UserFormDialog user={user} />
+                      <DeleteUserButton user={user} />
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))
             )}

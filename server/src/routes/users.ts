@@ -2,34 +2,39 @@ import { Router } from 'express'
 import { z } from 'zod'
 import {
   createUserSchema,
+  updateUserSchema,
   type CreateUserResponse,
-  type Role,
+  type UpdateUserResponse,
+  type UserListItem,
   type UsersResponse,
 } from '@helpdesk/shared'
 import { auth } from '../auth.js'
 import { prisma } from '../db.js'
-import { requireAdmin, requireAuth } from '../middleware/auth.js'
+import { requireAdmin, requireAuth, type AuthSession } from '../middleware/auth.js'
 
 // User management; every route is admin-only.
 export const usersRouter = Router()
 
 usersRouter.use(requireAuth, requireAdmin)
 
-usersRouter.get('/', async (_req, res) => {
-  // Explicit select: never send password hashes or session data.
-  const users = await prisma.user.findMany({
-    select: { id: true, name: true, email: true, role: true, createdAt: true },
-    orderBy: { createdAt: 'asc' },
-  })
+// Explicit select: never send password hashes or session data.
+const userSelect = { id: true, name: true, email: true, role: true, createdAt: true } as const
 
-  const body: UsersResponse = {
-    users: users.map((u) => ({
-      ...u,
-      // `role` is a plain string column; anything but 'admin' is an agent.
-      role: (u.role === 'admin' ? 'admin' : 'agent') satisfies Role,
-      createdAt: u.createdAt.toISOString(),
-    })),
+function toUserListItem(user: { id: string; name: string; email: string; role: string; createdAt: Date }): UserListItem {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    // `role` is a plain string column; anything but 'admin' is an agent.
+    role: user.role === 'admin' ? 'admin' : 'agent',
+    createdAt: user.createdAt.toISOString(),
   }
+}
+
+usersRouter.get('/', async (_req, res) => {
+  const users = await prisma.user.findMany({ select: userSelect, orderBy: { createdAt: 'asc' } })
+
+  const body: UsersResponse = { users: users.map(toUserListItem) }
   res.json(body)
 })
 
@@ -67,14 +72,57 @@ usersRouter.post('/', async (req, res) => {
     throw err
   }
 
-  const body: CreateUserResponse = {
-    user: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: 'agent',
-      createdAt: user.createdAt.toISOString(),
-    },
-  }
+  const body: CreateUserResponse = { user: toUserListItem({ ...user, role: 'agent' }) }
   res.status(201).json(body)
+})
+
+// Edits a user's name and email, and replaces their password when one is given.
+// The role can't be changed here.
+usersRouter.patch('/:id', async (req, res) => {
+  const parsed = updateUserSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid input', fields: z.flattenError(parsed.error).fieldErrors })
+    return
+  }
+  const { name, email, password } = parsed.data
+  const { id } = req.params
+
+  if (!(await prisma.user.findUnique({ where: { id }, select: { id: true } }))) {
+    res.status(404).json({ error: 'User not found' })
+    return
+  }
+
+  const ctx = await auth.$context
+  const sameEmail = await ctx.internalAdapter.findUserByEmail(email)
+  if (sameEmail && sameEmail.user.id !== id) {
+    res.status(409).json({ error: 'A user with this email already exists' })
+    return
+  }
+
+  const user = await prisma.user.update({ where: { id }, data: { name, email }, select: userSelect })
+  if (password) {
+    await ctx.internalAdapter.updatePassword(id, await ctx.password.hash(password))
+  }
+
+  const body: UpdateUserResponse = { user: toUserListItem(user) }
+  res.json(body)
+})
+
+// Permanently deletes a user. Their sessions and accounts cascade in the
+// database, so they are signed out everywhere. Admins can't delete themselves,
+// which also means at least one admin always remains.
+usersRouter.delete('/:id', async (req, res) => {
+  const { id } = req.params
+  const { user: me } = res.locals as AuthSession
+  if (id === me.id) {
+    res.status(403).json({ error: "You can't delete your own account" })
+    return
+  }
+
+  const { count } = await prisma.user.deleteMany({ where: { id } })
+  if (count === 0) {
+    res.status(404).json({ error: 'User not found' })
+    return
+  }
+  res.status(204).end()
 })

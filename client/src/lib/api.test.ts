@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, apiGet, apiPost } from './api'
+import { ApiError, apiDelete, apiGet, apiPatch, apiPost } from './api'
 
 const fetchMock = vi.fn<typeof fetch>()
 
@@ -52,5 +52,42 @@ describe('apiPost', () => {
     fetchMock.mockResolvedValue(new Response('Bad gateway', { status: 502 }))
 
     await expect(apiPost('/api/users', {})).rejects.toMatchObject({ message: 'HTTP 502', status: 502 })
+  })
+})
+
+describe('apiPatch', () => {
+  it('sends the body as JSON with PATCH and returns the parsed response', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ user: { id: '1' } }))
+
+    await expect(apiPatch('/api/users/1', { name: 'Jane' })).resolves.toEqual({ user: { id: '1' } })
+    expect(fetchMock).toHaveBeenCalledWith('/api/users/1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Jane' }),
+    })
+  })
+
+  it("throws ApiError with the server's error message", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ error: 'User not found' }, 404))
+
+    await expect(apiPatch('/api/users/x', {})).rejects.toMatchObject({ message: 'User not found', status: 404 })
+  })
+})
+
+describe('apiDelete', () => {
+  it('sends DELETE and resolves with nothing on 204', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }))
+
+    await expect(apiDelete('/api/users/1')).resolves.toBeUndefined()
+    expect(fetchMock).toHaveBeenCalledWith('/api/users/1', { method: 'DELETE' })
+  })
+
+  it("throws ApiError with the server's error message", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ error: "You can't delete your own account" }, 403))
+
+    await expect(apiDelete('/api/users/me')).rejects.toMatchObject({
+      message: "You can't delete your own account",
+      status: 403,
+    })
   })
 })

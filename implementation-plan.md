@@ -44,11 +44,12 @@ Based on `project-scope.md` and `tech-stack.md`. Each phase ends with something 
 
 - [x] API: list users
 - [x] API: create agent (name, email, initial password)
-- [ ] API: edit agent (name, email)
+- [x] API: edit agent (name, email)
 - [ ] API: deactivate / reactivate agent (deactivation deletes all their sessions)
 - [ ] Prevent the admin from deactivating themselves
+- [x] Delete user permanently, with confirmation (admins can't delete themselves; added on request alongside the planned deactivation)
 - [x] Users page: table of users
-- [ ] Create / edit agent form with validation
+- [x] Create / edit agent form with validation
 - [ ] Deactivate / reactivate action with confirmation
 - [ ] Hide user management from agents in the UI (server already enforces it)
 - [ ] Tests: agent cannot access user endpoints; deactivated agent is logged out and cannot log in
