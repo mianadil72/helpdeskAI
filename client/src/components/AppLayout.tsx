@@ -19,6 +19,9 @@ export function AppLayout() {
   return (
     <div className="min-h-svh">
       <AppHeader>
+        <Button variant="ghost" size="sm" asChild>
+          <Link to="/tickets">Tickets</Link>
+        </Button>
         {session?.user.role === 'admin' && (
           <Button variant="ghost" size="sm" asChild>
             <Link to="/users">Users</Link>

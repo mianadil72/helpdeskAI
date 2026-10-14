@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { createUserSchema, updateUserSchema } from './index.js'
+import { createUserSchema, inboundEmailSchema, ticketListQuerySchema, updateTicketSchema, updateUserSchema } from './index.js'
 
 const valid = { name: 'Jane Doe', email: 'jane@example.com', password: 'password123' }
 
@@ -115,5 +115,113 @@ describe('updateUserSchema', () => {
 
   it('strips unknown keys such as role', () => {
     expect(updateUserSchema.parse({ ...edit, role: 'admin' })).not.toHaveProperty('role')
+  })
+})
+
+describe('inboundEmailSchema', () => {
+  const email = {
+    from: { email: ' Student@Example.com ', name: ' Stu ' },
+    subject: ' Help ',
+    text: 'I cannot log in',
+    messageId: ' <abc@mail.example.com> ',
+  }
+
+  it('normalises the sender, subject and Message-IDs', () => {
+    const parsed = inboundEmailSchema.parse({
+      ...email,
+      inReplyTo: '<prev@example.com>',
+      references: ['<root@example.com>', 'prev@example.com'],
+      headers: { 'Auto-Submitted': 'no' },
+    })
+    expect(parsed).toEqual({
+      from: { email: 'student@example.com', name: 'Stu' },
+      subject: 'Help',
+      text: 'I cannot log in',
+      messageId: 'abc@mail.example.com',
+      inReplyTo: 'prev@example.com',
+      references: ['root@example.com', 'prev@example.com'],
+      headers: { 'auto-submitted': 'no' },
+    })
+  })
+
+  it('fills in a blank subject and drops a blank name', () => {
+    const parsed = inboundEmailSchema.parse({ ...email, subject: '  ', from: { email: 'a@b.co', name: '' } })
+    expect(parsed.subject).toBe('(no subject)')
+    expect(parsed.from.name).toBeUndefined()
+  })
+
+  it('accepts an HTML-only email', () => {
+    expect(inboundEmailSchema.safeParse({ ...email, text: undefined, html: '<p>Hi</p>' }).success).toBe(true)
+  })
+
+  it('rejects an email without a body, sender or Message-ID', () => {
+    const result = inboundEmailSchema.safeParse({ from: { email: 'nope' }, text: ' ', messageId: '<>' })
+    expect(result.success).toBe(false)
+    const paths = result.error!.issues.map((issue) => issue.path.join('.'))
+    expect(paths).toEqual(expect.arrayContaining(['from.email', 'messageId']))
+
+    const noBody = inboundEmailSchema.safeParse({ ...email, text: ' ' })
+    expect(noBody.error?.issues[0]).toMatchObject({ path: ['text'], message: 'The email has no body' })
+  })
+})
+
+describe('ticketListQuerySchema', () => {
+  it('defaults to the newest 20 tickets', () => {
+    expect(ticketListQuerySchema.parse({})).toEqual({
+      sort: 'createdAt',
+      order: 'desc',
+      page: 1,
+      pageSize: 20,
+    })
+  })
+
+  it('parses filters, search, sorting and paging from query strings', () => {
+    expect(
+      ticketListQuerySchema.parse({
+        status: 'resolved',
+        category: 'refund_request',
+        q: ' login ',
+        sort: 'updatedAt',
+        order: 'asc',
+        page: '3',
+        pageSize: '50',
+      }),
+    ).toEqual({
+      status: 'resolved',
+      category: 'refund_request',
+      q: 'login',
+      sort: 'updatedAt',
+      order: 'asc',
+      page: 3,
+      pageSize: 50,
+    })
+  })
+
+  it('falls back to defaults for invalid values', () => {
+    expect(
+      ticketListQuerySchema.parse({
+        status: 'pending',
+        category: 'x',
+        q: '  ',
+        sort: 'subject',
+        order: 'up',
+        page: '0',
+        pageSize: '1000',
+      }),
+    ).toEqual({ sort: 'createdAt', order: 'desc', page: 1, pageSize: 20 })
+  })
+})
+
+describe('updateTicketSchema', () => {
+  it('accepts any one field, and null to unassign', () => {
+    expect(updateTicketSchema.parse({ status: 'resolved' })).toEqual({ status: 'resolved' })
+    expect(updateTicketSchema.parse({ category: 'refund_request' })).toEqual({ category: 'refund_request' })
+    expect(updateTicketSchema.parse({ assigneeId: null })).toEqual({ assigneeId: null })
+  })
+
+  it('rejects an empty body and unknown values', () => {
+    expect(updateTicketSchema.safeParse({}).success).toBe(false)
+    expect(updateTicketSchema.safeParse({ status: 'pending' }).success).toBe(false)
+    expect(updateTicketSchema.safeParse({ assigneeId: '' }).success).toBe(false)
   })
 })

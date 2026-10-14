@@ -4,6 +4,8 @@ import { RequireAdmin } from '@/components/RequireAdmin'
 import { RequireAuth } from '@/components/RequireAuth'
 import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
+import { TicketDetailPage } from '@/pages/TicketDetailPage'
+import { TicketsPage } from '@/pages/TicketsPage'
 import { UsersPage } from '@/pages/UsersPage'
 
 function App() {
@@ -14,6 +16,8 @@ function App() {
         <Route element={<RequireAuth />}>
           <Route element={<AppLayout />}>
             <Route index element={<HomePage />} />
+            <Route path="/tickets" element={<TicketsPage />} />
+            <Route path="/tickets/:id" element={<TicketDetailPage />} />
             <Route element={<RequireAdmin />}>
               <Route path="/users" element={<UsersPage />} />
             </Route>

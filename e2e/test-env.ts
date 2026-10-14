@@ -57,6 +57,13 @@ export const serverEnv: Record<string, string> = {
   TRUST_PROXY: '',
   ...testEnv,
   PORT: String(apiPort),
+  INBOUND_EMAIL_SECRET: inboundEmailSecret(),
+}
+
+// Shared secret for POST /api/inbound/email. Optional in .env.test; a fixed
+// fallback keeps it the same in the config process and the test workers.
+export function inboundEmailSecret() {
+  return testEnv.INBOUND_EMAIL_SECRET || 'e2e-inbound-email-secret'
 }
 
 // The seeded admin, for tests that need to sign in.

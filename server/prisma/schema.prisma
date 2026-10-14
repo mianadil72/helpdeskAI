@@ -1,10 +1,10 @@
 // Prisma schema: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider               = "prisma-client"
-  output                 = "../src/generated/prisma"
-  moduleFormat           = "esm"
-  importFileExtension    = "js"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
 }
 
 datasource db {
@@ -14,17 +14,18 @@ datasource db {
 // Better Auth core tables (https://www.better-auth.com/docs/concepts/database)
 
 model User {
-  id            String    @id
-  name          String
-  email         String
-  emailVerified Boolean   @default(false)
-  image         String?
-  role          String    @default("agent") // 'admin' | 'agent'
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime? // set when an admin deletes the user (soft delete)
-  sessions      Session[]
-  accounts      Account[]
+  id              String    @id
+  name            String
+  email           String
+  emailVerified   Boolean   @default(false)
+  image           String?
+  role            String    @default("agent") // 'admin' | 'agent'
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime? // set when an admin deletes the user (soft delete)
+  sessions        Session[]
+  accounts        Account[]
+  assignedTickets Ticket[]
 
   @@unique([email])
   @@map("user")
@@ -76,4 +77,62 @@ model Verification {
 
   @@index([identifier])
   @@map("verification")
+}
+
+// Tickets (statuses and categories mirror TICKET_STATUSES / TICKET_CATEGORIES
+// in @helpdesk/shared)
+
+enum TicketStatus {
+  open
+  resolved
+  closed
+}
+
+enum TicketCategory {
+  general_question
+  technical_question
+  refund_request
+}
+
+enum MessageDirection {
+  inbound
+  outbound
+}
+
+model Ticket {
+  id             String         @id @default(uuid())
+  subject        String
+  requesterEmail String
+  requesterName  String?
+  status         TicketStatus   @default(open)
+  // Exactly one per ticket; the AI classifier will replace the default.
+  category       TicketCategory @default(general_question)
+  assigneeId     String?
+  assignee       User?          @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  summary        String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  messages       Message[]
+
+  @@index([status])
+  @@index([requesterEmail])
+  @@index([assigneeId])
+  @@map("ticket")
+}
+
+model Message {
+  id             String           @id @default(uuid())
+  ticketId       String
+  ticket         Ticket           @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  direction      MessageDirection
+  fromEmail      String
+  fromName       String?
+  body           String           @db.Text
+  // RFC 5322 Message-ID without angle brackets; dedups retried deliveries and
+  // threads replies (In-Reply-To / References) onto their ticket.
+  emailMessageId String?          @unique
+  createdAt      DateTime         @default(now())
+
+  @@index([ticketId])
+  @@map("message")
 }

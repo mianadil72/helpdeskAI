@@ -58,32 +58,32 @@ Based on `project-scope.md` and `tech-stack.md`. Each phase ends with something 
 
 ## Phase 4 — Tickets Core
 
-- [ ] Shared enums in `/shared`: status (`open`, `resolved`, `closed`) and category (`general_question`, `technical_question`, `refund_request`)
-- [ ] Prisma models: `Ticket` (subject, student email/name, status, category, assigned agent, summary, timestamps) and `Message` (ticket, direction inbound/outbound, author, body, email message ID, timestamp)
+- [x] Shared enums in `/shared`: status (`open`, `resolved`, `closed`) and category (`general_question`, `technical_question`, `refund_request`)
+- [x] Prisma models: `Ticket` (subject, student email/name, status, category, assigned agent, summary, timestamps) and `Message` (ticket, direction inbound/outbound, author, body, email message ID, timestamp)
 - [ ] Seed script with sample tickets for development
-- [ ] API: list tickets with filtering (status, category, assignee) and sorting (created, updated)
-- [ ] API: pagination for ticket list
-- [ ] API: get ticket with its messages
-- [ ] API: update status
-- [ ] API: update category (manual override)
-- [ ] API: assign ticket to an agent
-- [ ] Ticket list page with TanStack Table: columns, filters, sorting, pagination
-- [ ] Search tickets by subject or student email
-- [ ] Ticket detail page: message thread, status, category, assignee
-- [ ] Status, category and assignee controls on the detail page
+- [x] API: list tickets with filtering (status, category, assignee) and sorting (created, updated) (assignee filter still to do)
+- [x] API: pagination for ticket list
+- [x] API: get ticket with its messages
+- [x] API: update status
+- [x] API: update category (manual override)
+- [x] API: assign ticket to an agent
+- [x] Ticket list page with TanStack Table: columns, filters, sorting, pagination
+- [x] Search tickets by subject or student email
+- [x] Ticket detail page: message thread, status, category, assignee
+- [x] Status, category and assignee controls on the detail page
 - [ ] Tests: filtering, sorting, status and category updates
 
 **Done when:** agents can browse, filter and manage seeded tickets.
 
 ## Phase 5 — Email Integration
 
-- [ ] Choose email provider (Postmark or SendGrid) and set up the support address
+- [ ] Choose email provider (Postmark or SendGrid) and set up the support address (not yet: `POST /api/inbound/email` takes a provider-neutral JSON email, so a provider adapter can be added later)
 - [ ] Configure domain authentication (SPF, DKIM) for outbound mail
-- [ ] Inbound webhook endpoint that verifies the request is from the provider
-- [ ] Parse inbound email into a new ticket + first message
-- [ ] Thread replies: match `In-Reply-To` / `References` headers to an existing ticket and append a message
-- [ ] Reopen a resolved ticket when the student replies
-- [ ] Ignore auto-replies and bounces (e.g. `Auto-Submitted` header) to prevent mail loops
+- [x] Inbound webhook endpoint that verifies the request is from the provider (shared-secret bearer token for now)
+- [x] Parse inbound email into a new ticket + first message
+- [x] Thread replies: match `In-Reply-To` / `References` headers to an existing ticket and append a message
+- [x] Reopen a resolved ticket when the student replies
+- [x] Ignore auto-replies and bounces (e.g. `Auto-Submitted` header) to prevent mail loops
 - [ ] Store attachment metadata (file handling can come later)
 - [ ] Set up pg-boss for background jobs
 - [ ] Reply composer on the ticket detail page

@@ -4,6 +4,8 @@ import type { HealthResponse } from '@helpdesk/shared'
 import { auth } from './auth.js'
 import { prisma } from './db.js'
 import { requireAuth, type AuthSession } from './middleware/auth.js'
+import { inboundRouter } from './routes/inbound.js'
+import { ticketsRouter } from './routes/tickets.js'
 import { usersRouter } from './routes/users.js'
 
 export const app = express()
@@ -24,6 +26,9 @@ app.all('/api/auth/*splat', (req, _res, next) => {
   req.headers['x-forwarded-for'] = req.ip
   next()
 }, toNodeHandler(auth))
+
+// Parses its own (larger) bodies, so it also goes before express.json().
+app.use('/api/inbound', inboundRouter)
 
 app.use(express.json())
 
@@ -53,6 +58,7 @@ app.get('/api/me', requireAuth, (_req, res) => {
 })
 
 app.use('/api/users', usersRouter)
+app.use('/api/tickets', ticketsRouter)
 
 // Last: replaces Express's default handler, which sends stack traces outside
 // production. Client errors (e.g. malformed JSON) keep their 4xx status.
