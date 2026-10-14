@@ -32,7 +32,11 @@ function toUserListItem(user: { id: string; name: string; email: string; role: s
 }
 
 usersRouter.get('/', async (_req, res) => {
-  const users = await prisma.user.findMany({ select: userSelect, orderBy: { createdAt: 'asc' } })
+  const users = await prisma.user.findMany({
+    where: { deletedAt: null },
+    select: userSelect,
+    orderBy: { createdAt: 'asc' },
+  })
 
   const body: UsersResponse = { users: users.map(toUserListItem) }
   res.json(body)
@@ -49,6 +53,7 @@ usersRouter.post('/', async (req, res) => {
   }
   const { name, email, password } = parsed.data
 
+  // Deleted users keep their row (and email), so their email stays taken.
   const ctx = await auth.$context
   if (await ctx.internalAdapter.findUserByEmail(email)) {
     res.status(409).json({ error: 'A user with this email already exists' })
@@ -87,7 +92,7 @@ usersRouter.patch('/:id', async (req, res) => {
   const { name, email, password } = parsed.data
   const { id } = req.params
 
-  if (!(await prisma.user.findUnique({ where: { id }, select: { id: true } }))) {
+  if (!(await prisma.user.findFirst({ where: { id, deletedAt: null }, select: { id: true } }))) {
     res.status(404).json({ error: 'User not found' })
     return
   }
@@ -108,8 +113,10 @@ usersRouter.patch('/:id', async (req, res) => {
   res.json(body)
 })
 
-// Permanently deletes a user. Their sessions and accounts cascade in the
-// database, so they are signed out everywhere. Admins can't delete themselves,
+// Soft-deletes a user: the row is kept with `deletedAt` set (so records that
+// reference them, like tickets, stay intact), they disappear from the list and
+// can't sign in again (see the session hook in auth.ts), and their sessions are
+// removed so they are signed out everywhere. Admins can't delete themselves,
 // which also means at least one admin always remains.
 usersRouter.delete('/:id', async (req, res) => {
   const { id } = req.params
@@ -119,7 +126,10 @@ usersRouter.delete('/:id', async (req, res) => {
     return
   }
 
-  const { count } = await prisma.user.deleteMany({ where: { id } })
+  const [{ count }] = await prisma.$transaction([
+    prisma.user.updateMany({ where: { id, deletedAt: null }, data: { deletedAt: new Date() } }),
+    prisma.session.deleteMany({ where: { userId: id } }),
+  ])
   if (count === 0) {
     res.status(404).json({ error: 'User not found' })
     return

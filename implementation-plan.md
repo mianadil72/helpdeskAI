@@ -47,7 +47,7 @@ Based on `project-scope.md` and `tech-stack.md`. Each phase ends with something 
 - [x] API: edit agent (name, email)
 - [ ] API: deactivate / reactivate agent (deactivation deletes all their sessions)
 - [ ] Prevent the admin from deactivating themselves
-- [x] Delete user permanently, with confirmation (admins can't delete themselves; added on request alongside the planned deactivation)
+- [x] Delete user (soft delete: `deletedAt` set, sessions removed, sign-in refused), with confirmation (admins can't delete themselves; added on request alongside the planned deactivation)
 - [x] Users page: table of users
 - [x] Create / edit agent form with validation
 - [ ] Deactivate / reactivate action with confirmation

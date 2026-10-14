@@ -70,8 +70,8 @@ export function DeleteUserButton({ user }: { user: UserListItem }) {
         <AlertDialogHeader>
           <AlertDialogTitle>Delete user?</AlertDialogTitle>
           <AlertDialogDescription>
-            This permanently deletes {user.name} ({user.email}) and signs them out everywhere. This
-            can't be undone.
+            This deletes {user.name} ({user.email}), signs them out everywhere and stops them from
+            signing in again. Their email can't be reused for a new user.
           </AlertDialogDescription>
         </AlertDialogHeader>
         {deleteUser.error && (

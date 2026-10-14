@@ -52,7 +52,7 @@ describe('DeleteUserButton', () => {
     const dialog = await openConfirm(user)
 
     expect(dialog).toHaveTextContent('Sam Agent (sam@example.com)')
-    expect(dialog).toHaveTextContent("can't be undone")
+    expect(dialog).toHaveTextContent("stops them from signing in again")
     expect(fetchMock).not.toHaveBeenCalled()
   })
 

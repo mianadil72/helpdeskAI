@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { adminStorageState, baseURL, testAdmin } from './test-env'
 
-// One sign-in here (the new agent); retries stay off so CI retries can't eat
+// Two sign-ins here (the new agent, then again after deletion); retries stay off so CI retries can't eat
 // the sign-in budget.
 test.describe.configure({ retries: 0 })
 
@@ -62,7 +62,19 @@ test.describe('users page (admin)', () => {
     await expect(page.getByRole('row').filter({ hasText: email })).toHaveCount(0)
     // Deleting the user removed their session too.
     expect((await agent.get('/api/me')).status()).toBe(401)
+    // Soft-deleted: the right password no longer works (second sign-in from the budget)…
+    const again = await agent.post('/api/auth/sign-in/email', {
+      data: { email, password: 'password123' },
+      headers: { Origin: baseURL },
+    })
+    expect(again.status()).toBe(401)
+    expect(await again.json()).toMatchObject({ message: 'Invalid email or password' })
     await agent.dispose()
+    // …and the row is kept, so the email can't be reused.
+    const reuse = await page.request.post('/api/users', {
+      data: { name: 'Reuse', email, password: 'password123' },
+    })
+    expect(reuse.status()).toBe(409)
   })
 
   test('keeps the user when the delete is cancelled', async ({ page }) => {

@@ -11,10 +11,11 @@ const mocks = vi.hoisted(() => ({
   updatePassword: vi.fn(),
   hash: vi.fn(),
   findMany: vi.fn(),
-  findUnique: vi.fn(),
+  findFirst: vi.fn(),
   updateUser: vi.fn(),
+  updateManyUsers: vi.fn(),
   deleteUser: vi.fn(),
-  deleteMany: vi.fn(),
+  deleteSessions: vi.fn(),
 }))
 
 vi.mock('../auth.js', () => ({
@@ -37,11 +38,13 @@ vi.mock('../db.js', () => ({
   prisma: {
     user: {
       findMany: mocks.findMany,
-      findUnique: mocks.findUnique,
+      findFirst: mocks.findFirst,
       update: mocks.updateUser,
+      updateMany: mocks.updateManyUsers,
       delete: mocks.deleteUser,
-      deleteMany: mocks.deleteMany,
     },
+    session: { deleteMany: mocks.deleteSessions },
+    $transaction: (ops: Promise<unknown>[]) => Promise.all(ops),
   },
 }))
 
@@ -207,6 +210,7 @@ describe('GET /api/users', () => {
     ])
     expect(mocks.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: { deletedAt: null },
         select: { id: true, name: true, email: true, role: true, createdAt: true },
       }),
     )
@@ -225,7 +229,7 @@ describe('PATCH /api/users/:id', () => {
   const edit = { name: 'Sam Renamed', email: 'sam.renamed@example.com' }
 
   beforeEach(() => {
-    mocks.findUnique.mockResolvedValue({ id: existing.id })
+    mocks.findFirst.mockResolvedValue({ id: existing.id })
     mocks.updateUser.mockImplementation(async ({ data }: { data: { name: string; email: string } }) => ({
       ...existing,
       ...data,
@@ -315,13 +319,16 @@ describe('PATCH /api/users/:id', () => {
     expect(mocks.updateUser).not.toHaveBeenCalled()
   })
 
-  it('returns 404 for an unknown user', async () => {
-    mocks.findUnique.mockResolvedValue(null)
+  it('returns 404 for an unknown or deleted user', async () => {
+    mocks.findFirst.mockResolvedValue(null)
 
     const res = await request(app).patch('/api/users/missing').send(edit)
 
     expect(res.status).toBe(404)
     expect(res.body).toEqual({ error: 'User not found' })
+    expect(mocks.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'missing', deletedAt: null } }),
+    )
     expect(mocks.updateUser).not.toHaveBeenCalled()
   })
 
@@ -336,15 +343,21 @@ describe('PATCH /api/users/:id', () => {
 
 describe('DELETE /api/users/:id', () => {
   beforeEach(() => {
-    mocks.deleteMany.mockResolvedValue({ count: 1 })
+    mocks.updateManyUsers.mockResolvedValue({ count: 1 })
+    mocks.deleteSessions.mockResolvedValue({ count: 2 })
   })
 
-  it('deletes the user and returns 204', async () => {
+  it('soft-deletes the user, signs them out and returns 204', async () => {
     const res = await request(app).delete('/api/users/agent-1')
 
     expect(res.status).toBe(204)
     expect(res.text).toBe('')
-    expect(mocks.deleteMany).toHaveBeenCalledWith({ where: { id: 'agent-1' } })
+    expect(mocks.updateManyUsers).toHaveBeenCalledWith({
+      where: { id: 'agent-1', deletedAt: null },
+      data: { deletedAt: expect.any(Date) },
+    })
+    expect(mocks.deleteSessions).toHaveBeenCalledWith({ where: { userId: 'agent-1' } })
+    expect(mocks.deleteUser).not.toHaveBeenCalled()
   })
 
   it("refuses to let admins delete themselves", async () => {
@@ -353,11 +366,11 @@ describe('DELETE /api/users/:id', () => {
 
     expect(res.status).toBe(403)
     expect(res.body).toEqual({ error: "You can't delete your own account" })
-    expect(mocks.deleteMany).not.toHaveBeenCalled()
+    expect(mocks.updateManyUsers).not.toHaveBeenCalled()
   })
 
-  it('returns 404 for an unknown user', async () => {
-    mocks.deleteMany.mockResolvedValue({ count: 0 })
+  it('returns 404 for an unknown or already deleted user', async () => {
+    mocks.updateManyUsers.mockResolvedValue({ count: 0 })
 
     const res = await request(app).delete('/api/users/missing')
 
@@ -370,6 +383,6 @@ describe('DELETE /api/users/:id', () => {
     expect((await request(app).delete('/api/users/agent-1')).status).toBe(401)
     signInAs('agent')
     expect((await request(app).delete('/api/users/agent-1')).status).toBe(403)
-    expect(mocks.deleteMany).not.toHaveBeenCalled()
+    expect(mocks.updateManyUsers).not.toHaveBeenCalled()
   })
 })

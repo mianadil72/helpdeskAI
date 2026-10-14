@@ -1,5 +1,6 @@
 import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
+import { APIError } from 'better-auth/api'
 import { prisma } from './db.js'
 
 // Better Auth falls back to a public default secret when this is missing
@@ -27,6 +28,27 @@ export const auth = betterAuth({
   user: {
     additionalFields: {
       role: { type: 'string', defaultValue: 'agent', input: false },
+    },
+  },
+  databaseHooks: {
+    session: {
+      create: {
+        // Soft-deleted users keep their account row, so refuse to start a
+        // session for them. Same response as a wrong password, so sign-in
+        // doesn't reveal that the account exists.
+        before: async (session) => {
+          const user = await prisma.user.findUnique({
+            where: { id: session.userId },
+            select: { deletedAt: true },
+          })
+          if (!user || user.deletedAt) {
+            throw new APIError('UNAUTHORIZED', {
+              message: 'Invalid email or password',
+              code: 'INVALID_EMAIL_OR_PASSWORD',
+            })
+          }
+        },
+      },
     },
   },
   trustedOrigins: process.env.TRUSTED_ORIGINS?.split(',').map((o) => o.trim()) ?? [],
