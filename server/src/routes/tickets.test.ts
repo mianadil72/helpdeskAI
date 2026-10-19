@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   count: vi.fn(),
   findUnique: vi.fn(),
   updateMany: vi.fn(),
+  update: vi.fn(),
   findManyUsers: vi.fn(),
   findFirstUser: vi.fn(),
 }))
@@ -22,6 +23,7 @@ vi.mock('../db.js', () => ({
       count: mocks.count,
       findUnique: mocks.findUnique,
       updateMany: mocks.updateMany,
+      update: mocks.update,
     },
     user: { findMany: mocks.findManyUsers, findFirst: mocks.findFirstUser },
     $transaction: (ops: Promise<unknown>[]) => Promise.all(ops),
@@ -296,6 +298,68 @@ describe('PATCH /api/tickets/:id', () => {
     signInAs(null)
     expect((await request(app).patch('/api/tickets/t1').send({ status: 'closed' })).status).toBe(401)
     expect(mocks.updateMany).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /api/tickets/:id/replies', () => {
+  beforeEach(() => {
+    mocks.findUnique.mockResolvedValue(detail)
+    mocks.update.mockResolvedValue({})
+  })
+
+  it("adds the user's reply as an outbound message and returns the ticket", async () => {
+    const res = await request(app).post('/api/tickets/t1/replies').send({ body: '  Try resetting it.  ' })
+
+    expect(res.status).toBe(201)
+    expect(res.body.ticket.id).toBe('t1')
+    expect(mocks.update).toHaveBeenCalledWith({
+      where: { id: 't1' },
+      data: {
+        updatedAt: expect.any(Date),
+        messages: {
+          create: { direction: 'outbound', fromEmail: 'agent@example.com', fromName: 'agent', body: 'Try resetting it.' },
+        },
+      },
+    })
+  })
+
+  it('also resolves the ticket with resolve: true', async () => {
+    const res = await request(app).post('/api/tickets/t1/replies').send({ body: 'Fixed it.', resolve: true })
+
+    expect(res.status).toBe(201)
+    expect(mocks.update.mock.calls[0][0].data).toMatchObject({
+      status: 'resolved',
+      messages: { create: expect.objectContaining({ body: 'Fixed it.' }) },
+    })
+  })
+
+  it('returns 400 for an empty or missing body', async () => {
+    const res = await request(app).post('/api/tickets/t1/replies').send({ body: '   ' })
+    expect(res.status).toBe(400)
+    expect(res.body).toEqual({ error: 'Invalid input', fields: { body: ['Write a reply'] } })
+    expect((await request(app).post('/api/tickets/t1/replies').send({})).status).toBe(400)
+    expect(mocks.update).not.toHaveBeenCalled()
+  })
+
+  it('returns 404 for an unknown ticket', async () => {
+    mocks.findUnique.mockResolvedValue(null)
+    const res = await request(app).post('/api/tickets/missing/replies').send({ body: 'Hi' })
+    expect(res.status).toBe(404)
+    expect(mocks.update).not.toHaveBeenCalled()
+  })
+
+  it('returns 409 for a closed ticket', async () => {
+    mocks.findUnique.mockResolvedValue({ ...detail, status: 'closed' })
+    const res = await request(app).post('/api/tickets/t1/replies').send({ body: 'Hi' })
+    expect(res.status).toBe(409)
+    expect(res.body).toEqual({ error: 'Ticket is closed; reopen it to reply' })
+    expect(mocks.update).not.toHaveBeenCalled()
+  })
+
+  it('returns 401 when signed out', async () => {
+    signInAs(null)
+    expect((await request(app).post('/api/tickets/t1/replies').send({ body: 'Hi' })).status).toBe(401)
+    expect(mocks.update).not.toHaveBeenCalled()
   })
 })
 

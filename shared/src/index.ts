@@ -231,6 +231,23 @@ export const updateTicketSchema = z
 
 export type UpdateTicketInput = z.input<typeof updateTicketSchema>
 
+// Body of POST /api/tickets/:id/replies: an agent's plain-text reply, and
+// whether to mark the ticket resolved with it ("Send & resolve"). The client
+// form uses the same schema.
+export const MAX_REPLY_LENGTH = 50_000
+
+export const createReplySchema = z.object({
+  body: z
+    .string()
+    .trim()
+    .min(1, 'Write a reply')
+    .max(MAX_REPLY_LENGTH, `Keep replies under ${MAX_REPLY_LENGTH.toLocaleString('en-US')} characters`),
+  resolve: z.boolean().default(false),
+})
+
+export type CreateReplyInput = z.input<typeof createReplySchema>
+export type CreateReply = z.output<typeof createReplySchema>
+
 // GET /api/tickets/assignees: users a ticket can be assigned to.
 export interface AssigneesResponse {
   users: { id: string; name: string; email: string }[]

@@ -54,10 +54,23 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status })
 }
 
-// Answers GETs from fixtures and applies PATCHes to the ticket it returns.
+// Answers GETs from fixtures and applies PATCHes and replies to the ticket it returns.
 function serve(current: TicketDetail = ticket) {
   fetchMock.mockImplementation(async (input, init) => {
     if (String(input) === '/api/tickets/assignees') return json(assignees)
+    if (init?.method === 'POST') {
+      const { body, resolve } = JSON.parse(String(init.body)) as { body: string; resolve: boolean }
+      const reply = {
+        id: `m${current.messages.length + 1}`,
+        direction: 'outbound' as const,
+        fromEmail: 'me@example.com',
+        fromName: 'Me Agent',
+        body: body.trim(),
+        createdAt: '2026-10-03T12:00:00.000Z',
+      }
+      current = { ...current, messages: [...current.messages, reply], ...(resolve && { status: 'resolved' as const }) }
+      return json({ ticket: current }, 201)
+    }
     if (init?.method === 'PATCH') {
       const { assigneeId, ...rest } = JSON.parse(String(init.body)) as { assigneeId?: string | null }
       current = { ...current, ...rest }
@@ -192,6 +205,71 @@ describe('TicketDetailPage', () => {
     await user.click(screen.getByRole('button', { name: 'Assign to me' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not save: Invalid input')
+  })
+
+  it('sends a reply, shows it in the thread and clears the form', async () => {
+    const user = renderPage()
+    const reply = await screen.findByRole('textbox', { name: 'Reply' })
+
+    await user.type(reply, 'Try resetting your password.')
+    await user.click(screen.getByRole('button', { name: 'Send reply' }))
+
+    const thread = () => within(screen.getByRole('region', { name: 'Messages' })).getAllByRole('article')
+    await waitFor(() => expect(thread()).toHaveLength(3))
+    expect(
+      fetchMock.mock.calls
+        .filter(([, init]) => init?.method === 'POST')
+        .map(([url, init]) => [String(url), JSON.parse(String(init!.body))]),
+    ).toEqual([['/api/tickets/t1/replies', { body: 'Try resetting your password.', resolve: false }]])
+    const messages = thread()
+    expect(messages[2]).toHaveAccessibleName('Message from Me Agent')
+    expect(messages[2]).toHaveTextContent('Try resetting your password.')
+    await waitFor(() => expect(reply).toHaveValue(''))
+  })
+
+  it('sends a reply and resolves the ticket', async () => {
+    const user = renderPage()
+    await user.type(await screen.findByRole('textbox', { name: 'Reply' }), 'All fixed now.')
+    await user.click(screen.getByRole('button', { name: 'Send & resolve' }))
+
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: 'Status' })).toHaveTextContent('Resolved'),
+    )
+    const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')
+    expect(JSON.parse(String(post![1]!.body))).toEqual({ body: 'All fixed now.', resolve: true })
+    // Already resolved now, so only the plain reply button is left.
+    expect(screen.queryByRole('button', { name: 'Send & resolve' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send reply' })).toBeInTheDocument()
+  })
+
+  it('does not send an empty reply', async () => {
+    const user = renderPage()
+    await user.type(await screen.findByRole('textbox', { name: 'Reply' }), '   ')
+    await user.click(screen.getByRole('button', { name: 'Send reply' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Write a reply')
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false)
+  })
+
+  it('shows an error when the reply fails', async () => {
+    const user = renderPage()
+    await user.type(await screen.findByRole('textbox', { name: 'Reply' }), 'Hello')
+    fetchMock.mockImplementation(async () => json({ error: 'Ticket is closed; reopen it to reply' }, 409))
+
+    await user.click(screen.getByRole('button', { name: 'Send reply' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not send: Ticket is closed; reopen it to reply',
+    )
+    expect(screen.getByRole('textbox', { name: 'Reply' })).toHaveValue('Hello')
+  })
+
+  it('hides the reply form on a closed ticket', async () => {
+    serve({ ...ticket, status: 'closed' })
+    renderPage()
+
+    expect(await screen.findByText('This ticket is closed. Reopen it to reply.')).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Reply' })).not.toBeInTheDocument()
   })
 
   it('links back to the list with its filters', async () => {

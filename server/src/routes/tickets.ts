@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import {
+  createReplySchema,
   ticketListQuerySchema,
   updateTicketSchema,
   type AssigneesResponse,
@@ -11,7 +12,7 @@ import {
 } from '@helpdesk/shared'
 import { prisma } from '../db.js'
 import type { Prisma } from '../generated/prisma/client.js'
-import { requireAuth } from '../middleware/auth.js'
+import { requireAuth, type AuthSession } from '../middleware/auth.js'
 
 // Tickets; every signed-in user (admin or agent) works them.
 export const ticketsRouter = Router()
@@ -127,6 +128,53 @@ ticketsRouter.patch('/:id', async (req, res) => {
   }
   const body: TicketResponse = { ticket }
   res.json(body)
+})
+
+// Adds the signed-in user's reply to the thread as an outbound message, and
+// marks the ticket resolved when `resolve` is set.
+// Nothing is emailed yet: sending (via a background job) comes with the email
+// provider. Closed tickets refuse replies, since a student's answer to one
+// would open a new ticket rather than thread onto it.
+ticketsRouter.post('/:id/replies', async (req, res) => {
+  const parsed = createReplySchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid input', fields: z.flattenError(parsed.error).fieldErrors })
+    return
+  }
+  const { user } = res.locals as AuthSession
+  const { id } = req.params
+
+  const existing = await prisma.ticket.findUnique({ where: { id }, select: { status: true } })
+  if (!existing) {
+    res.status(404).json({ error: 'Ticket not found' })
+    return
+  }
+  if (existing.status === 'closed') {
+    res.status(409).json({ error: 'Ticket is closed; reopen it to reply' })
+    return
+  }
+
+  const { body: text, resolve } = parsed.data
+  // One write, so "Send & resolve" never saves the reply without the status.
+  await prisma.ticket.update({
+    where: { id },
+    data: {
+      // A new message counts as activity, so "Updated" sorting sees it.
+      updatedAt: new Date(),
+      ...(resolve && { status: 'resolved' as const }),
+      messages: {
+        create: { direction: 'outbound', fromEmail: user.email, fromName: user.name, body: text },
+      },
+    },
+  })
+
+  const ticket = await findTicket(id)
+  if (!ticket) {
+    res.status(404).json({ error: 'Ticket not found' })
+    return
+  }
+  const body: TicketResponse = { ticket }
+  res.status(201).json(body)
 })
 
 // Tickets without a requester name sort last either way; unassigned tickets

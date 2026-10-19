@@ -1,10 +1,15 @@
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useLocation, useParams } from 'react-router'
-import { ArrowLeft, CircleAlert, Mail, MessageSquareReply } from 'lucide-react'
+import { ArrowLeft, CircleAlert, CircleCheck, LoaderCircle, Mail, MessageSquareReply, Send } from 'lucide-react'
 import {
   TICKET_CATEGORIES,
   TICKET_STATUSES,
+  createReplySchema,
   type AssigneesResponse,
+  type CreateReply,
+  type CreateReplyInput,
   type TicketCategory,
   type TicketDetail,
   type TicketMessage,
@@ -23,7 +28,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ApiError, apiGet, apiPatch } from '@/lib/api'
+import { Textarea } from '@/components/ui/textarea'
+import { ApiError, apiGet, apiPatch, apiPost } from '@/lib/api'
 import { authClient } from '@/lib/auth-client'
 import { ticketCategoryLabels, ticketStatusBadge, ticketStatusLabels } from '@/lib/tickets'
 
@@ -89,6 +95,7 @@ function TicketView({ ticket }: { ticket: TicketDetail }) {
           {ticket.messages.map((message) => (
             <MessageCard key={message.id} message={message} />
           ))}
+          <ReplyForm ticket={ticket} />
         </section>
         <TicketControls ticket={ticket} />
       </div>
@@ -121,6 +128,104 @@ function MessageCard({ message }: { message: TicketMessage }) {
         <CardContent className="text-sm break-words whitespace-pre-wrap">{message.body}</CardContent>
       </Card>
     </article>
+  )
+}
+
+// Plain-text reply, added to the thread as an outbound message. The server
+// refuses replies on closed tickets, so the form is replaced by a note.
+function ReplyForm({ ticket }: { ticket: TicketDetail }) {
+  const queryClient = useQueryClient()
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<CreateReplyInput, unknown, CreateReply>({
+    resolver: zodResolver(createReplySchema),
+    defaultValues: { body: '' },
+  })
+
+  const sendReply = useMutation({
+    mutationFn: (values: CreateReply) =>
+      apiPost<TicketResponse>(`/api/tickets/${encodeURIComponent(ticket.id)}/replies`, values),
+    onSuccess: async (data) => {
+      queryClient.setQueryData(['ticket', ticket.id], data)
+      await queryClient.invalidateQueries({ queryKey: ['tickets'] })
+    },
+  })
+  // Which button shows the spinner; both are disabled while submitting.
+  const resolving = sendReply.isPending && sendReply.variables.resolve
+  const replying = sendReply.isPending && !sendReply.variables.resolve
+
+  async function send(values: CreateReply, resolve: boolean) {
+    try {
+      await sendReply.mutateAsync({ ...values, resolve })
+      reset()
+    } catch (err) {
+      setError('root.serverError', {
+        message: err instanceof Error ? err.message : 'Could not send the reply',
+      })
+    }
+  }
+
+  if (ticket.status === 'closed') {
+    return (
+      <p className="text-sm text-muted-foreground">This ticket is closed. Reopen it to reply.</p>
+    )
+  }
+
+  return (
+    <Card size="sm">
+      <CardContent>
+        <form onSubmit={handleSubmit((values) => send(values, false))} noValidate className="flex flex-col gap-3">
+          {errors.root?.serverError && (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+              <CircleAlert className="mt-0.5 size-4 shrink-0" />
+              <span>Could not send: {errors.root.serverError.message}</span>
+            </div>
+          )}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="reply-body">Reply</Label>
+            <Textarea
+              id="reply-body"
+              rows={5}
+              className="max-h-96"
+              placeholder={`Reply to ${ticket.requesterName ?? ticket.requesterEmail}`}
+              aria-invalid={errors.body ? 'true' : 'false'}
+              aria-describedby={errors.body ? 'reply-body-error' : undefined}
+              {...register('body')}
+            />
+            {errors.body && (
+              <p id="reply-body-error" role="alert" className="text-sm text-destructive">
+                {errors.body.message}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {/* Pointless on a resolved ticket: a plain reply keeps it resolved. */}
+            {ticket.status !== 'resolved' && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSubmitting}
+                onClick={handleSubmit((values) => send(values, true))}
+              >
+                {resolving ? <LoaderCircle className="animate-spin" /> : <CircleCheck />}
+                {resolving ? 'Sending…' : 'Send & resolve'}
+              </Button>
+            )}
+            <Button type="submit" disabled={isSubmitting}>
+              {replying ? <LoaderCircle className="animate-spin" /> : <Send />}
+              {replying ? 'Sending…' : 'Send reply'}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   )
 }
 

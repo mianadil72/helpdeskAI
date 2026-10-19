@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { createUserSchema, inboundEmailSchema, ticketListQuerySchema, updateTicketSchema, updateUserSchema } from './index.js'
+import { createReplySchema, createUserSchema, inboundEmailSchema, ticketListQuerySchema, updateTicketSchema, updateUserSchema } from './index.js'
 
 const valid = { name: 'Jane Doe', email: 'jane@example.com', password: 'password123' }
 
@@ -223,5 +223,18 @@ describe('updateTicketSchema', () => {
     expect(updateTicketSchema.safeParse({}).success).toBe(false)
     expect(updateTicketSchema.safeParse({ status: 'pending' }).success).toBe(false)
     expect(updateTicketSchema.safeParse({ assigneeId: '' }).success).toBe(false)
+  })
+})
+
+describe('createReplySchema', () => {
+  it('trims the body and defaults resolve to false', () => {
+    expect(createReplySchema.parse({ body: '  Hi there  ' })).toEqual({ body: 'Hi there', resolve: false })
+    expect(createReplySchema.parse({ body: 'Hi', resolve: true })).toEqual({ body: 'Hi', resolve: true })
+  })
+
+  it('rejects blank and overlong replies', () => {
+    expect(createReplySchema.safeParse({ body: '   ' }).success).toBe(false)
+    expect(createReplySchema.safeParse({ body: 'x'.repeat(50_001) }).success).toBe(false)
+    expect(createReplySchema.safeParse({}).success).toBe(false)
   })
 })

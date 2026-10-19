@@ -86,7 +86,7 @@ Based on `project-scope.md` and `tech-stack.md`. Each phase ends with something 
 - [x] Ignore auto-replies and bounces (e.g. `Auto-Submitted` header) to prevent mail loops
 - [ ] Store attachment metadata (file handling can come later)
 - [ ] Set up pg-boss for background jobs
-- [ ] Reply composer on the ticket detail page
+- [x] Reply composer on the ticket detail page (replies are stored as outbound messages; emailing them is the next task)
 - [ ] Send agent replies as email via a background job, with retries
 - [ ] Set outbound headers so student replies thread back to the ticket
 - [ ] Tests: new email creates ticket, reply appends to existing ticket, auto-replies ignored
