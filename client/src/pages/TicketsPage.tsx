@@ -49,11 +49,10 @@ const column = createColumnHelper<typeof features, TicketListItem>()
 
 const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
-// Sorting and paging happen on the server; only the date columns can sort.
+// Sorting and paging happen on the server; column ids are TicketSortField values.
 const columns = column.columns([
   column.accessor('subject', {
     header: 'Subject',
-    enableSorting: false,
     cell: ({ row }) => (
       <div className="flex flex-col">
         <TicketLink id={row.original.id}>{row.original.subject}</TicketLink>
@@ -64,8 +63,8 @@ const columns = column.columns([
     ),
   }),
   column.accessor('requesterEmail', {
+    id: 'requester',
     header: 'Requester',
-    enableSorting: false,
     cell: ({ row }) => (
       <div className="flex flex-col">
         {row.original.requesterName && <span>{row.original.requesterName}</span>}
@@ -75,20 +74,19 @@ const columns = column.columns([
   }),
   column.accessor('status', {
     header: 'Status',
-    enableSorting: false,
     cell: ({ getValue }) => (
       <Badge variant={ticketStatusBadge[getValue()]}>{ticketStatusLabels[getValue()]}</Badge>
     ),
   }),
   column.accessor('category', {
     header: 'Category',
-    enableSorting: false,
     cell: ({ getValue }) => ticketCategoryLabels[getValue()],
   }),
   column.accessor((ticket) => ticket.assignee?.name, {
     id: 'assignee',
     header: 'Assignee',
-    enableSorting: false,
+    // Text columns sort A-Z first; this one would guess descending when the first row is unassigned.
+    sortDescFirst: false,
     cell: ({ getValue }) =>
       getValue() ?? <span className="text-muted-foreground">Unassigned</span>,
   }),

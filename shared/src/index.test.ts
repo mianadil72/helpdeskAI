@@ -203,7 +203,7 @@ describe('ticketListQuerySchema', () => {
         status: 'pending',
         category: 'x',
         q: '  ',
-        sort: 'subject',
+        sort: 'password',
         order: 'up',
         page: '0',
         pageSize: '1000',

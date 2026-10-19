@@ -131,6 +131,20 @@ describe('GET /api/tickets', () => {
     expect(mocks.count).toHaveBeenCalledWith({ where })
   })
 
+  it.each([
+    ['subject', [{ subject: 'asc' }, { createdAt: 'desc' }, { id: 'desc' }]],
+    ['status', [{ status: 'asc' }, { createdAt: 'desc' }, { id: 'desc' }]],
+    ['category', [{ category: 'asc' }, { createdAt: 'desc' }, { id: 'desc' }]],
+    [
+      'requester',
+      [{ requesterName: { sort: 'asc', nulls: 'last' } }, { requesterEmail: 'asc' }, { createdAt: 'desc' }, { id: 'desc' }],
+    ],
+    ['assignee', [{ assignee: { name: 'asc' } }, { createdAt: 'desc' }, { id: 'desc' }]],
+  ])('sorts by %s', async (sort, orderBy) => {
+    await request(app).get('/api/tickets').query({ sort, order: 'asc' })
+    expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({ orderBy }))
+  })
+
   it('ignores invalid query values', async () => {
     const res = await request(app)
       .get('/api/tickets')

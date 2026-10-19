@@ -138,7 +138,17 @@ export interface InboundEmailResponse {
 
 // Query string of GET /api/tickets. Invalid or missing values fall back to the
 // defaults rather than failing, since they come from a user-editable URL.
-export const TICKET_SORT_FIELDS = ['createdAt', 'updatedAt'] as const
+// Sort fields match the ticket table's column ids. Status and category sort in
+// the order of TICKET_STATUSES / TICKET_CATEGORIES (their database enum order).
+export const TICKET_SORT_FIELDS = [
+  'subject',
+  'requester',
+  'status',
+  'category',
+  'assignee',
+  'createdAt',
+  'updatedAt',
+] as const
 export type TicketSortField = (typeof TICKET_SORT_FIELDS)[number]
 export const TICKET_PAGE_SIZES = [10, 20, 50] as const
 

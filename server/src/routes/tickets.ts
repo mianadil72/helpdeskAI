@@ -6,9 +6,11 @@ import {
   type AssigneesResponse,
   type TicketListItem,
   type TicketResponse,
+  type TicketSortField,
   type TicketsResponse,
 } from '@helpdesk/shared'
 import { prisma } from '../db.js'
+import type { Prisma } from '../generated/prisma/client.js'
 import { requireAuth } from '../middleware/auth.js'
 
 // Tickets; every signed-in user (admin or agent) works them.
@@ -36,8 +38,7 @@ ticketsRouter.get('/', async (req, res) => {
   const [tickets, total] = await prisma.$transaction([
     prisma.ticket.findMany({
       where,
-      // id as a tiebreaker keeps pages stable when timestamps are equal.
-      orderBy: [{ [sort]: order }, { id: order }],
+      orderBy: ticketOrderBy(sort, order),
       skip: (page - 1) * pageSize,
       take: pageSize,
       select: {
@@ -127,6 +128,24 @@ ticketsRouter.patch('/:id', async (req, res) => {
   const body: TicketResponse = { ticket }
   res.json(body)
 })
+
+// Tickets without a requester name sort last either way; unassigned tickets
+// sort like Postgres NULLs (last ascending, first descending). The newest-first
+// and id tiebreakers keep pages stable when values are equal.
+function ticketOrderBy(sort: TicketSortField, order: 'asc' | 'desc'): Prisma.TicketOrderByWithRelationInput[] {
+  const tiebreakers: Prisma.TicketOrderByWithRelationInput[] = [{ createdAt: 'desc' }, { id: 'desc' }]
+  switch (sort) {
+    case 'createdAt':
+    case 'updatedAt':
+      return [{ [sort]: order }, { id: order }]
+    case 'requester':
+      return [{ requesterName: { sort: order, nulls: 'last' } }, { requesterEmail: order }, ...tiebreakers]
+    case 'assignee':
+      return [{ assignee: { name: order } }, ...tiebreakers]
+    default:
+      return [{ [sort]: order }, ...tiebreakers]
+  }
+}
 
 async function findTicket(id: string): Promise<TicketResponse['ticket'] | null> {
   const ticket = await prisma.ticket.findUnique({

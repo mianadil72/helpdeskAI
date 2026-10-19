@@ -127,6 +127,22 @@ describe('TicketsPage', () => {
     await waitFor(() => expect(lastQuery()).toMatchObject({ sort: 'updatedAt', order: 'asc' }))
   })
 
+  it('sorts text columns A to Z first', async () => {
+    const user = renderPage()
+    await screen.findByText("Can't log in")
+
+    for (const [name, sort] of [
+      ['Subject', 'subject'],
+      ['Requester', 'requester'],
+      ['Status', 'status'],
+      ['Category', 'category'],
+      ['Assignee', 'assignee'],
+    ]) {
+      await user.click(screen.getByRole('button', { name }))
+      await waitFor(() => expect(lastQuery()).toMatchObject({ sort, order: 'asc' }))
+    }
+  })
+
   it('pages through results', async () => {
     respond({ total: 45 })
     const user = renderPage()
