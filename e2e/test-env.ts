@@ -55,6 +55,8 @@ export const apiURL = `http://localhost:${apiPort}`
 export const serverEnv: Record<string, string> = {
   NODE_ENV: 'test',
   TRUST_PROXY: '',
+  // Never call the AI provider from e2e runs.
+  OPENAI_API_KEY: '',
   ...testEnv,
   PORT: String(apiPort),
   INBOUND_EMAIL_SECRET: inboundEmailSecret(),

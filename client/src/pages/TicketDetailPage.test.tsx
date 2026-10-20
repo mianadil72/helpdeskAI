@@ -58,6 +58,10 @@ function json(body: unknown, status = 200) {
 function serve(current: TicketDetail = ticket) {
   fetchMock.mockImplementation(async (input, init) => {
     if (String(input) === '/api/tickets/assignees') return json(assignees)
+    if (String(input).endsWith('/replies/polish')) {
+      const { body } = JSON.parse(String(init!.body)) as { body: string }
+      return json({ body: `Polished: ${body.trim()}` })
+    }
     if (init?.method === 'POST') {
       const { body, resolve } = JSON.parse(String(init.body)) as { body: string; resolve: boolean }
       const reply = {
@@ -262,6 +266,64 @@ describe('TicketDetailPage', () => {
       'Could not send: Ticket is closed; reopen it to reply',
     )
     expect(screen.getByRole('textbox', { name: 'Reply' })).toHaveValue('Hello')
+  })
+
+  it('polishes the draft, can undo it, and sends the polished text', async () => {
+    const user = renderPage()
+    const reply = await screen.findByRole('textbox', { name: 'Reply' })
+    await user.type(reply, 'try reset pw')
+
+    await user.click(screen.getByRole('button', { name: 'Polish' }))
+    await waitFor(() => expect(reply).toHaveValue('Polished: try reset pw'))
+    expect(fetchMock.mock.calls.find(([url]) => String(url).endsWith('/polish'))?.[0]).toBe(
+      '/api/tickets/t1/replies/polish',
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Undo polish' }))
+    expect(reply).toHaveValue('try reset pw')
+    expect(screen.queryByRole('button', { name: 'Undo polish' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Polish' }))
+    await waitFor(() => expect(reply).toHaveValue('Polished: try reset pw'))
+    await user.click(screen.getByRole('button', { name: 'Send reply' }))
+
+    await waitFor(() => expect(reply).toHaveValue(''))
+    const sent = fetchMock.mock.calls.find(([url]) => String(url) === '/api/tickets/t1/replies')
+    expect(JSON.parse(String(sent![1]!.body))).toEqual({ body: 'Polished: try reset pw', resolve: false })
+    expect(screen.queryByRole('button', { name: 'Undo polish' })).not.toBeInTheDocument()
+  })
+
+  it('drops Undo once the polished text is edited', async () => {
+    const user = renderPage()
+    const reply = await screen.findByRole('textbox', { name: 'Reply' })
+    await user.type(reply, 'hi')
+    await user.click(screen.getByRole('button', { name: 'Polish' }))
+    await screen.findByRole('button', { name: 'Undo polish' })
+
+    await user.type(reply, '!')
+
+    expect(screen.queryByRole('button', { name: 'Undo polish' })).not.toBeInTheDocument()
+  })
+
+  it('does not polish an empty draft', async () => {
+    const user = renderPage()
+    await screen.findByRole('textbox', { name: 'Reply' })
+    await user.click(screen.getByRole('button', { name: 'Polish' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Write a reply')
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/polish'))).toBe(false)
+  })
+
+  it('keeps the draft and shows an error when polishing fails', async () => {
+    const user = renderPage()
+    await user.type(await screen.findByRole('textbox', { name: 'Reply' }), 'Hello')
+    fetchMock.mockImplementation(async () => json({ error: 'AI polishing is not configured' }, 503))
+
+    await user.click(screen.getByRole('button', { name: 'Polish' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not polish: AI polishing is not configured')
+    expect(screen.getByRole('textbox', { name: 'Reply' })).toHaveValue('Hello')
+    expect(screen.getByRole('button', { name: 'Send reply' })).toBeEnabled()
   })
 
   it('hides the reply form on a closed ticket', async () => {

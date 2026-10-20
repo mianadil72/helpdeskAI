@@ -12,9 +12,18 @@ const mocks = vi.hoisted(() => ({
   update: vi.fn(),
   findManyUsers: vi.fn(),
   findFirstUser: vi.fn(),
+  isAiConfigured: vi.fn(),
+  polishReply: vi.fn(),
+  describeAiError: vi.fn(),
 }))
 
 vi.mock('../auth.js', () => ({ auth: { handler: vi.fn(), api: { getSession: mocks.getSession } } }))
+
+vi.mock('../ai.js', () => ({
+  isAiConfigured: mocks.isAiConfigured,
+  polishReply: mocks.polishReply,
+  describeAiError: mocks.describeAiError,
+}))
 
 vi.mock('../db.js', () => ({
   prisma: {
@@ -360,6 +369,81 @@ describe('POST /api/tickets/:id/replies', () => {
     signInAs(null)
     expect((await request(app).post('/api/tickets/t1/replies').send({ body: 'Hi' })).status).toBe(401)
     expect(mocks.update).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /api/tickets/:id/replies/polish', () => {
+  beforeEach(() => {
+    mocks.isAiConfigured.mockReturnValue(true)
+    mocks.findUnique.mockResolvedValue({
+      subject: "Can't log in",
+      assignee: { name: 'Sam' },
+      messages: [{ body: 'Still broken' }],
+    })
+    mocks.polishReply.mockResolvedValue('Please try resetting your password.')
+  })
+
+  it('returns the polished draft, using the ticket for context', async () => {
+    const res = await request(app).post('/api/tickets/t1/replies/polish').send({ body: '  try reset pw  ' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ body: 'Please try resetting your password.' })
+    expect(mocks.polishReply).toHaveBeenCalledWith({
+      draft: 'try reset pw',
+      subject: "Can't log in",
+      lastInbound: 'Still broken',
+      agentName: 'Sam',
+    })
+    expect(mocks.findUnique.mock.calls[0][0].where).toEqual({ id: 't1' })
+    expect(mocks.update).not.toHaveBeenCalled()
+  })
+
+  it("signs with the polishing user's name on an unassigned ticket without inbound messages", async () => {
+    mocks.findUnique.mockResolvedValue({ subject: 'Hi', assignee: null, messages: [] })
+    await request(app).post('/api/tickets/t1/replies/polish').send({ body: 'hello' })
+    expect(mocks.polishReply).toHaveBeenCalledWith({ draft: 'hello', subject: 'Hi', lastInbound: null, agentName: 'agent' })
+  })
+
+  it('returns 400 for an empty body', async () => {
+    const res = await request(app).post('/api/tickets/t1/replies/polish').send({ body: '   ' })
+    expect(res.status).toBe(400)
+    expect(res.body).toEqual({ error: 'Invalid input', fields: { body: ['Write a reply'] } })
+    expect(mocks.polishReply).not.toHaveBeenCalled()
+  })
+
+  it('returns 404 for an unknown ticket', async () => {
+    mocks.findUnique.mockResolvedValue(null)
+    expect((await request(app).post('/api/tickets/missing/replies/polish').send({ body: 'Hi' })).status).toBe(404)
+    expect(mocks.polishReply).not.toHaveBeenCalled()
+  })
+
+  it('returns 503 when AI is not configured', async () => {
+    mocks.isAiConfigured.mockReturnValue(false)
+    const res = await request(app).post('/api/tickets/t1/replies/polish').send({ body: 'Hi' })
+    expect(res.status).toBe(503)
+    expect(res.body).toEqual({ error: 'AI polishing is not configured' })
+    expect(mocks.polishReply).not.toHaveBeenCalled()
+  })
+
+  it('returns 502 with an explanation when the AI call fails', async () => {
+    const error = new Error('no credits')
+    mocks.polishReply.mockRejectedValue(error)
+    mocks.describeAiError.mockReturnValue('The AI provider account is out of credits. Ask an admin to add credits.')
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const res = await request(app).post('/api/tickets/t1/replies/polish').send({ body: 'Hi' })
+
+    expect(res.status).toBe(502)
+    expect(res.body).toEqual({ error: 'The AI provider account is out of credits. Ask an admin to add credits.' })
+    expect(mocks.describeAiError).toHaveBeenCalledWith(error)
+    expect(consoleError).toHaveBeenCalled()
+    consoleError.mockRestore()
+  })
+
+  it('returns 401 when signed out', async () => {
+    signInAs(null)
+    expect((await request(app).post('/api/tickets/t1/replies/polish').send({ body: 'Hi' })).status).toBe(401)
+    expect(mocks.polishReply).not.toHaveBeenCalled()
   })
 })
 

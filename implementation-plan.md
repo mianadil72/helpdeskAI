@@ -115,6 +115,7 @@ Based on `project-scope.md` and `tech-stack.md`. Each phase ends with something 
 - [ ] Load knowledge base at startup and build the cached system prompt
 - [ ] Reply-drafting prompt: answer only from the knowledge base; say when it can't answer
 - [ ] Generate a suggested reply (Claude Sonnet 5.5) on demand from the ticket detail page
+- [x] "Polish" button in the reply form: improves the agent's own draft (gpt-5-nano via the Vercel AI SDK); the agent reviews it before sending
 - [ ] Insert suggestion into the reply composer for the agent to edit before sending
 - [ ] Record whether the agent sent the draft unchanged, edited it, or discarded it
 - [ ] "Regenerate" action for a new suggestion

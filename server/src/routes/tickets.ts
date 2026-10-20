@@ -2,14 +2,17 @@ import { Router } from 'express'
 import { z } from 'zod'
 import {
   createReplySchema,
+  polishReplySchema,
   ticketListQuerySchema,
   updateTicketSchema,
   type AssigneesResponse,
+  type PolishReplyResponse,
   type TicketListItem,
   type TicketResponse,
   type TicketSortField,
   type TicketsResponse,
 } from '@helpdesk/shared'
+import { describeAiError, isAiConfigured, polishReply } from '../ai.js'
 import { prisma } from '../db.js'
 import type { Prisma } from '../generated/prisma/client.js'
 import { requireAuth, type AuthSession } from '../middleware/auth.js'
@@ -175,6 +178,53 @@ ticketsRouter.post('/:id/replies', async (req, res) => {
   }
   const body: TicketResponse = { ticket }
   res.status(201).json(body)
+})
+
+// Improves the agent's draft with AI and returns it; nothing is saved, and
+// the agent still reviews and sends it. Failures leave manual replies working.
+ticketsRouter.post('/:id/replies/polish', async (req, res) => {
+  const parsed = polishReplySchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid input', fields: z.flattenError(parsed.error).fieldErrors })
+    return
+  }
+  if (!isAiConfigured()) {
+    res.status(503).json({ error: 'AI polishing is not configured' })
+    return
+  }
+
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: req.params.id },
+    select: {
+      subject: true,
+      assignee: { select: { name: true } },
+      messages: {
+        where: { direction: 'inbound' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 1,
+        select: { body: true },
+      },
+    },
+  })
+  if (!ticket) {
+    res.status(404).json({ error: 'Ticket not found' })
+    return
+  }
+
+  try {
+    const polished = await polishReply({
+      draft: parsed.data.body,
+      subject: ticket.subject,
+      lastInbound: ticket.messages[0]?.body ?? null,
+      // Signed by the assignee; on an unassigned ticket, by whoever polishes it.
+      agentName: ticket.assignee?.name ?? (res.locals as AuthSession).user.name,
+    })
+    const body: PolishReplyResponse = { body: polished }
+    res.json(body)
+  } catch (err) {
+    console.error('Polishing a reply failed:', err)
+    res.status(502).json({ error: describeAiError(err) })
+  }
 })
 
 // Tickets without a requester name sort last either way; unassigned tickets

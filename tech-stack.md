@@ -37,6 +37,7 @@ Authentication uses **database sessions**, not JWTs.
 - **Reply drafts:** Claude Sonnet 5.5 (`claude-sonnet-5-5`). Higher-quality writing for text students read.
 - **Knowledge base:** for v1, include the full knowledge base in the prompt and use prompt caching. Add retrieval (pgvector in the same Postgres database) only if the knowledge base outgrows the context.
 - **Logging:** store the model, prompt version, and whether the agent accepted or edited each AI draft, to measure accuracy over time.
+- **Reply polishing:** OpenAI `gpt-5-nano` through the Vercel AI SDK (`ai` + `@ai-sdk/openai`), chosen for this feature at the user's request; all AI calls live in `server/src/ai.ts`, so the provider can be swapped there.
 
 ## Project Structure
 

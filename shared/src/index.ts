@@ -248,6 +248,16 @@ export const createReplySchema = z.object({
 export type CreateReplyInput = z.input<typeof createReplySchema>
 export type CreateReply = z.output<typeof createReplySchema>
 
+// Body of POST /api/tickets/:id/replies/polish: the agent's draft, with the
+// same rules as a reply. The response is the AI-improved text, still a draft.
+export const polishReplySchema = createReplySchema.pick({ body: true })
+
+export type PolishReplyInput = z.input<typeof polishReplySchema>
+
+export interface PolishReplyResponse {
+  body: string
+}
+
 // GET /api/tickets/assignees: users a ticket can be assigned to.
 export interface AssigneesResponse {
   users: { id: string; name: string; email: string }[]

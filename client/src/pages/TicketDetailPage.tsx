@@ -1,8 +1,9 @@
+import { useState, type ChangeEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useLocation, useParams } from 'react-router'
-import { ArrowLeft, CircleAlert, CircleCheck, LoaderCircle, Mail, MessageSquareReply, Send } from 'lucide-react'
+import { ArrowLeft, CircleAlert, CircleCheck, LoaderCircle, Mail, MessageSquareReply, Send, Sparkles, Undo2 } from 'lucide-react'
 import {
   TICKET_CATEGORIES,
   TICKET_STATUSES,
@@ -10,6 +11,7 @@ import {
   type AssigneesResponse,
   type CreateReply,
   type CreateReplyInput,
+  type PolishReplyResponse,
   type TicketCategory,
   type TicketDetail,
   type TicketMessage,
@@ -140,6 +142,9 @@ function ReplyForm({ ticket }: { ticket: TicketDetail }) {
     handleSubmit,
     reset,
     setError,
+    setValue,
+    getValues,
+    trigger,
     formState: { errors, isSubmitting },
   } = useForm<CreateReplyInput, unknown, CreateReply>({
     resolver: zodResolver(createReplySchema),
@@ -158,10 +163,39 @@ function ReplyForm({ ticket }: { ticket: TicketDetail }) {
   const resolving = sendReply.isPending && sendReply.variables.resolve
   const replying = sendReply.isPending && !sendReply.variables.resolve
 
+  // AI-improved draft. The agent can still edit it, undo it or send it.
+  const polish = useMutation({
+    mutationFn: (body: string) =>
+      apiPost<PolishReplyResponse>(`/api/tickets/${encodeURIComponent(ticket.id)}/replies/polish`, { body }),
+  })
+  // The text before the last polish, while the polished text is unedited.
+  const [beforePolish, setBeforePolish] = useState<{ original: string; polished: string } | null>(null)
+  const busy = isSubmitting || polish.isPending
+
+  async function polishDraft() {
+    if (!(await trigger('body'))) return
+    const original = getValues('body')
+    try {
+      const { body } = await polish.mutateAsync(original)
+      setValue('body', body, { shouldDirty: true, shouldValidate: true })
+      setBeforePolish({ original, polished: body })
+    } catch {
+      // Shown from polish.error; the draft is left as it was.
+    }
+  }
+
+  function undoPolish() {
+    if (!beforePolish) return
+    setValue('body', beforePolish.original, { shouldDirty: true, shouldValidate: true })
+    setBeforePolish(null)
+  }
+
   async function send(values: CreateReply, resolve: boolean) {
     try {
       await sendReply.mutateAsync({ ...values, resolve })
       reset()
+      setBeforePolish(null)
+      polish.reset()
     } catch (err) {
       setError('root.serverError', {
         message: err instanceof Error ? err.message : 'Could not send the reply',
@@ -188,6 +222,15 @@ function ReplyForm({ ticket }: { ticket: TicketDetail }) {
               <span>Could not send: {errors.root.serverError.message}</span>
             </div>
           )}
+          {polish.error && (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+              <CircleAlert className="mt-0.5 size-4 shrink-0" />
+              <span>Could not polish: {polish.error.message}</span>
+            </div>
+          )}
           <div className="flex flex-col gap-2">
             <Label htmlFor="reply-body">Reply</Label>
             <Textarea
@@ -197,7 +240,12 @@ function ReplyForm({ ticket }: { ticket: TicketDetail }) {
               placeholder={`Reply to ${ticket.requesterName ?? ticket.requesterEmail}`}
               aria-invalid={errors.body ? 'true' : 'false'}
               aria-describedby={errors.body ? 'reply-body-error' : undefined}
-              {...register('body')}
+              {...register('body', {
+                // Editing the polished text makes it the agent's own; drop Undo.
+                onChange: (event: ChangeEvent<HTMLTextAreaElement>) => {
+                  if (beforePolish && event.target.value !== beforePolish.polished) setBeforePolish(null)
+                },
+              })}
             />
             {errors.body && (
               <p id="reply-body-error" role="alert" className="text-sm text-destructive">
@@ -206,19 +254,29 @@ function ReplyForm({ ticket }: { ticket: TicketDetail }) {
             )}
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
+            {beforePolish && (
+              <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={undoPolish}>
+                <Undo2 />
+                Undo polish
+              </Button>
+            )}
+            <Button type="button" variant="outline" disabled={busy} onClick={polishDraft}>
+              {polish.isPending ? <LoaderCircle className="animate-spin" /> : <Sparkles />}
+              {polish.isPending ? 'Polishing…' : 'Polish'}
+            </Button>
             {/* Pointless on a resolved ticket: a plain reply keeps it resolved. */}
             {ticket.status !== 'resolved' && (
               <Button
                 type="button"
                 variant="outline"
-                disabled={isSubmitting}
+                disabled={busy}
                 onClick={handleSubmit((values) => send(values, true))}
               >
                 {resolving ? <LoaderCircle className="animate-spin" /> : <CircleCheck />}
                 {resolving ? 'Sending…' : 'Send & resolve'}
               </Button>
             )}
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={busy}>
               {replying ? <LoaderCircle className="animate-spin" /> : <Send />}
               {replying ? 'Sending…' : 'Send reply'}
             </Button>
