@@ -404,11 +404,36 @@ describe('POST /api/tickets/:id/replies/polish', () => {
     expect(mocks.polishReply).toHaveBeenCalledWith({ draft: 'hello', subject: 'Hi', lastInbound: null, agentName: 'agent' })
   })
 
-  it('returns 400 for an empty body', async () => {
+  it('lets admins polish too', async () => {
+    signInAs('admin')
+    mocks.findUnique.mockResolvedValue({ subject: 'Hi', assignee: null, messages: [] })
+
+    const res = await request(app).post('/api/tickets/t1/replies/polish').send({ body: 'hello' })
+
+    expect(res.status).toBe(200)
+    expect(mocks.polishReply).toHaveBeenCalledWith(expect.objectContaining({ agentName: 'admin' }))
+  })
+
+  it('asks only for the latest inbound message', async () => {
+    await request(app).post('/api/tickets/t1/replies/polish').send({ body: 'hello' })
+
+    expect(mocks.findUnique.mock.calls[0][0].select.messages).toEqual({
+      where: { direction: 'inbound' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 1,
+      select: { body: true },
+    })
+  })
+
+  it('returns 400 for an empty, missing or too long body', async () => {
     const res = await request(app).post('/api/tickets/t1/replies/polish').send({ body: '   ' })
     expect(res.status).toBe(400)
     expect(res.body).toEqual({ error: 'Invalid input', fields: { body: ['Write a reply'] } })
+    expect((await request(app).post('/api/tickets/t1/replies/polish').send({})).status).toBe(400)
+    const long = await request(app).post('/api/tickets/t1/replies/polish').send({ body: 'a'.repeat(50_001) })
+    expect(long.status).toBe(400)
     expect(mocks.polishReply).not.toHaveBeenCalled()
+    expect(mocks.findUnique).not.toHaveBeenCalled()
   })
 
   it('returns 404 for an unknown ticket', async () => {

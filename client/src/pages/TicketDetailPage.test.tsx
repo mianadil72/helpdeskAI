@@ -305,6 +305,65 @@ describe('TicketDetailPage', () => {
     expect(screen.queryByRole('button', { name: 'Undo polish' })).not.toBeInTheDocument()
   })
 
+  it('puts Polish before the send buttons', async () => {
+    renderPage()
+    await screen.findByRole('textbox', { name: 'Reply' })
+
+    const form = screen.getByRole('textbox', { name: 'Reply' }).closest('form')!
+    const names = within(form)
+      .getAllByRole('button')
+      .map((button) => button.textContent)
+    expect(names).toEqual(['Polish', 'Send & resolve', 'Send reply'])
+  })
+
+  it('disables the buttons while polishing', async () => {
+    const user = renderPage()
+    await user.type(await screen.findByRole('textbox', { name: 'Reply' }), 'hi')
+    let respond!: (response: Response) => void
+    fetchMock.mockImplementation(() => new Promise<Response>((resolve) => (respond = resolve)))
+
+    await user.click(screen.getByRole('button', { name: 'Polish' }))
+
+    expect(await screen.findByRole('button', { name: 'Polishing…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Send reply' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Send & resolve' })).toBeDisabled()
+
+    respond(json({ body: 'Hi there.' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send reply' })).toBeEnabled())
+    expect(screen.getByRole('textbox', { name: 'Reply' })).toHaveValue('Hi there.')
+  })
+
+  it('sends the polished text with Send & resolve', async () => {
+    const user = renderPage()
+    const reply = await screen.findByRole('textbox', { name: 'Reply' })
+    await user.type(reply, 'all fixed')
+    await user.click(screen.getByRole('button', { name: 'Polish' }))
+    await waitFor(() => expect(reply).toHaveValue('Polished: all fixed'))
+
+    await user.click(screen.getByRole('button', { name: 'Send & resolve' }))
+
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Status' })).toHaveTextContent('Resolved'))
+    const sent = fetchMock.mock.calls.find(([url]) => String(url) === '/api/tickets/t1/replies')
+    expect(JSON.parse(String(sent![1]!.body))).toEqual({ body: 'Polished: all fixed', resolve: true })
+  })
+
+  it('clears a polish error after a successful polish', async () => {
+    const user = renderPage()
+    await user.type(await screen.findByRole('textbox', { name: 'Reply' }), 'Hello')
+    fetchMock.mockImplementationOnce(async () =>
+      json({ error: 'The AI provider account is out of credits. Ask an admin to add credits.' }, 502),
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Polish' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not polish: The AI provider account is out of credits. Ask an admin to add credits.',
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Polish' }))
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Reply' })).toHaveValue('Polished: Hello'))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it('does not polish an empty draft', async () => {
     const user = renderPage()
     await screen.findByRole('textbox', { name: 'Reply' })
