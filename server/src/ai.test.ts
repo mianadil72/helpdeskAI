@@ -1,6 +1,6 @@
 import { APICallError, RetryError } from 'ai'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { describeAiError, isAiConfigured, polishReply } from './ai.js'
+import { describeAiError, isAiConfigured, polishReply, summarizeTicket } from './ai.js'
 
 const generateText = vi.hoisted(() => vi.fn())
 
@@ -72,6 +72,67 @@ describe('polishReply', () => {
   it('throws on an empty reply', async () => {
     generateText.mockResolvedValue({ text: '   ' })
     await expect(polishReply(input)).rejects.toThrow('The model returned an empty reply')
+  })
+})
+
+describe('summarizeTicket', () => {
+  const messages = [
+    {
+      direction: 'inbound' as const,
+      fromName: 'Stu Dent',
+      fromEmail: 'stu@example.com',
+      body: 'My password stopped working.',
+      createdAt: new Date('2026-10-01T12:00:00.000Z'),
+    },
+    {
+      direction: 'outbound' as const,
+      fromName: null,
+      fromEmail: 'sam@example.com',
+      body: 'Try resetting it.',
+      createdAt: new Date('2026-10-02T12:00:00.000Z'),
+    },
+  ]
+
+  beforeEach(() => {
+    generateText.mockReset()
+  })
+
+  it('sends the whole thread, oldest first, labelled by side', async () => {
+    generateText.mockResolvedValue({ text: '  The student cannot log in; support suggested a reset.  ' })
+
+    expect(await summarizeTicket({ subject: "Can't log in", messages })).toBe(
+      'The student cannot log in; support suggested a reset.',
+    )
+    const call = generateText.mock.calls[0][0]
+    expect(call.model.modelId).toBe('gpt-5-nano')
+    expect(call.providerOptions).toEqual({ openai: { reasoningEffort: 'minimal' } })
+    expect(call.system).toMatch(/2 to 5 sentences/)
+    expect(call.prompt).toBe(
+      [
+        "Ticket subject: Can't log in",
+        'Message 1 (Student, Stu Dent <stu@example.com>, 2026-10-01T12:00:00.000Z):\n"""\nMy password stopped working.\n"""',
+        'Message 2 (Support, sam@example.com, 2026-10-02T12:00:00.000Z):\n"""\nTry resetting it.\n"""',
+      ].join('\n\n'),
+    )
+  })
+
+  it('shortens very long messages', async () => {
+    generateText.mockResolvedValue({ text: 'Summary.' })
+
+    await summarizeTicket({ subject: 'Logs', messages: [{ ...messages[0], body: 'x'.repeat(5_000) }] })
+
+    const prompt: string = generateText.mock.calls[0][0].prompt
+    expect(prompt).toContain(`${'x'.repeat(4_000)}\n[…message shortened]`)
+    expect(prompt).not.toContain('x'.repeat(4_001))
+  })
+
+  it('throws on an empty summary and passes AI SDK errors on', async () => {
+    generateText.mockResolvedValue({ text: ' ' })
+    await expect(summarizeTicket({ subject: 'Hi', messages })).rejects.toThrow('The model returned an empty summary')
+
+    const error = new Error('network down')
+    generateText.mockRejectedValue(error)
+    await expect(summarizeTicket({ subject: 'Hi', messages })).rejects.toBe(error)
   })
 })
 

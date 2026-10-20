@@ -55,6 +55,59 @@ export async function polishReply({ draft, subject, lastInbound, agentName }: Po
   return polished
 }
 
+const SUMMARY_MODEL = 'gpt-5-nano'
+
+const SUMMARY_SYSTEM = `You summarize support tickets for the agents who work them.
+Read the whole conversation between a student and the support team and write a short summary in 2 to 5 sentences:
+what the student needs, what support has replied or tried so far, and what is still open or the next step.
+Stick to what the messages say; do not guess or add advice.
+Return only the summary as plain text: no Markdown, no headings, no lists.`
+
+// Long messages (quoted threads, pasted logs) are cut to keep the prompt small.
+const MAX_SUMMARY_MESSAGE_CHARS = 4_000
+
+export interface SummaryMessage {
+  direction: 'inbound' | 'outbound'
+  fromName: string | null
+  fromEmail: string
+  body: string
+  createdAt: Date
+}
+
+export interface SummarizeTicketInput {
+  subject: string
+  // Oldest first.
+  messages: SummaryMessage[]
+}
+
+// Returns a short plain-text summary of the ticket's whole thread. Throws if
+// the call fails or the model returns nothing.
+export async function summarizeTicket({ subject, messages }: SummarizeTicketInput): Promise<string> {
+  const thread = messages.map((message, index) => {
+    const role = message.direction === 'inbound' ? 'Student' : 'Support'
+    const from = message.fromName ? `${message.fromName} <${message.fromEmail}>` : message.fromEmail
+    const body =
+      message.body.length > MAX_SUMMARY_MESSAGE_CHARS
+        ? `${message.body.slice(0, MAX_SUMMARY_MESSAGE_CHARS)}\n[…message shortened]`
+        : message.body
+    return `Message ${index + 1} (${role}, ${from}, ${message.createdAt.toISOString()}):\n"""\n${body}\n"""`
+  })
+  const prompt = [`Ticket subject: ${subject}`, ...thread].join('\n\n')
+
+  const { text } = await generateText({
+    model: openai(SUMMARY_MODEL),
+    system: SUMMARY_SYSTEM,
+    prompt,
+    providerOptions: {
+      openai: { reasoningEffort: 'minimal' } satisfies OpenAILanguageModelResponsesOptions,
+    },
+  })
+
+  const summary = text.trim()
+  if (!summary) throw new Error('The model returned an empty summary')
+  return summary
+}
+
 // A message for agents saying why an AI call failed, without provider
 // internals. The full error still goes to the server log.
 export function describeAiError(err: unknown): string {

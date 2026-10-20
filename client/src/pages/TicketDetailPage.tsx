@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useLocation, useParams } from 'react-router'
-import { ArrowLeft, CircleAlert, CircleCheck, LoaderCircle, Mail, MessageSquareReply, Send, Sparkles, Undo2 } from 'lucide-react'
+import { ArrowLeft, CircleAlert, CircleCheck, LoaderCircle, Mail, MessageSquareReply, Send, Sparkles, Undo2, WandSparkles } from 'lucide-react'
 import {
   TICKET_CATEGORIES,
   TICKET_STATUSES,
@@ -21,7 +21,7 @@ import {
 } from '@helpdesk/shared'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -86,14 +86,7 @@ function TicketView({ ticket }: { ticket: TicketDetail }) {
 
       <div className="grid gap-4 md:grid-cols-[1fr_16rem] md:items-start">
         <section aria-label="Messages" className="flex min-w-0 flex-col gap-3">
-          {ticket.summary && (
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle>Summary</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm">{ticket.summary}</CardContent>
-            </Card>
-          )}
+          <SummaryCard ticket={ticket} />
           {ticket.messages.map((message) => (
             <MessageCard key={message.id} message={message} />
           ))}
@@ -102,6 +95,48 @@ function TicketView({ ticket }: { ticket: TicketDetail }) {
         <TicketControls ticket={ticket} />
       </div>
     </>
+  )
+}
+
+// AI summary of the whole thread, saved on the ticket. "Summarize" creates or
+// refreshes it; failures leave the current summary as it is.
+function SummaryCard({ ticket }: { ticket: TicketDetail }) {
+  const queryClient = useQueryClient()
+  const summarize = useMutation({
+    mutationFn: () => apiPost<TicketResponse>(`/api/tickets/${encodeURIComponent(ticket.id)}/summary`, {}),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['ticket', ticket.id], data)
+    },
+  })
+
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>Summary</CardTitle>
+        <CardAction>
+          <Button variant="outline" size="sm" disabled={summarize.isPending} onClick={() => summarize.mutate()}>
+            {summarize.isPending ? <LoaderCircle className="animate-spin" /> : <WandSparkles />}
+            {summarize.isPending ? 'Summarizing…' : ticket.summary ? 'Update summary' : 'Summarize'}
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 text-sm">
+        {summarize.error && (
+          <div
+            role="alert"
+            className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-destructive"
+          >
+            <CircleAlert className="mt-0.5 size-4 shrink-0" />
+            <span>Could not summarize: {summarize.error.message}</span>
+          </div>
+        )}
+        {ticket.summary ? (
+          <p className="break-words whitespace-pre-wrap">{ticket.summary}</p>
+        ) : (
+          <p className="text-muted-foreground">No summary yet. Summarize the conversation with AI.</p>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

@@ -58,6 +58,10 @@ function json(body: unknown, status = 200) {
 function serve(current: TicketDetail = ticket) {
   fetchMock.mockImplementation(async (input, init) => {
     if (String(input) === '/api/tickets/assignees') return json(assignees)
+    if (String(input).endsWith('/summary')) {
+      current = { ...current, summary: `Summary of ${current.messages.length} messages.` }
+      return json({ ticket: current })
+    }
     if (String(input).endsWith('/replies/polish')) {
       const { body } = JSON.parse(String(init!.body)) as { body: string }
       return json({ body: `Polished: ${body.trim()}` })
@@ -303,6 +307,56 @@ describe('TicketDetailPage', () => {
     await user.type(reply, '!')
 
     expect(screen.queryByRole('button', { name: 'Undo polish' })).not.toBeInTheDocument()
+  })
+
+  it('summarizes the ticket and shows the summary', async () => {
+    const user = renderPage()
+    const summary = await screen.findByRole('button', { name: 'Summarize' })
+    expect(screen.getByText('No summary yet. Summarize the conversation with AI.')).toBeInTheDocument()
+
+    await user.click(summary)
+
+    expect(await screen.findByText('Summary of 2 messages.')).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([url, init]) => url === '/api/tickets/t1/summary' && init?.method === 'POST')).toBe(
+      true,
+    )
+    // With a summary, the button refreshes it.
+    expect(screen.getByRole('button', { name: 'Update summary' })).toBeEnabled()
+    expect(screen.queryByText(/No summary yet/)).not.toBeInTheDocument()
+  })
+
+  it('shows an existing summary', async () => {
+    serve({ ...ticket, summary: 'Stu cannot log in.' })
+    renderPage()
+
+    expect(await screen.findByText('Stu cannot log in.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Update summary' })).toBeInTheDocument()
+  })
+
+  it('disables the summary button while summarizing', async () => {
+    const user = renderPage()
+    const button = await screen.findByRole('button', { name: 'Summarize' })
+    fetchMock.mockImplementation(() => new Promise<Response>(() => {}))
+
+    await user.click(button)
+
+    expect(await screen.findByRole('button', { name: 'Summarizing…' })).toBeDisabled()
+  })
+
+  it('keeps the current summary and shows an error when summarizing fails', async () => {
+    serve({ ...ticket, summary: 'Old summary.' })
+    const user = renderPage()
+    const button = await screen.findByRole('button', { name: 'Update summary' })
+    fetchMock.mockImplementation(async () =>
+      json({ error: 'The AI provider account is out of credits. Ask an admin to add credits.' }, 502),
+    )
+
+    await user.click(button)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not summarize: The AI provider account is out of credits. Ask an admin to add credits.',
+    )
+    expect(screen.getByText('Old summary.')).toBeInTheDocument()
   })
 
   it('puts Polish before the send buttons', async () => {

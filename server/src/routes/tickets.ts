@@ -12,7 +12,7 @@ import {
   type TicketSortField,
   type TicketsResponse,
 } from '@helpdesk/shared'
-import { describeAiError, isAiConfigured, polishReply } from '../ai.js'
+import { describeAiError, isAiConfigured, polishReply, summarizeTicket } from '../ai.js'
 import { prisma } from '../db.js'
 import type { Prisma } from '../generated/prisma/client.js'
 import { requireAuth, type AuthSession } from '../middleware/auth.js'
@@ -225,6 +225,52 @@ ticketsRouter.post('/:id/replies/polish', async (req, res) => {
     console.error('Polishing a reply failed:', err)
     res.status(502).json({ error: describeAiError(err) })
   }
+})
+
+// Summarizes the whole thread with AI and saves it as the ticket's summary.
+// Not ticket activity, so updatedAt is kept. Failures change nothing.
+ticketsRouter.post('/:id/summary', async (req, res) => {
+  if (!isAiConfigured()) {
+    res.status(503).json({ error: 'AI summaries are not configured' })
+    return
+  }
+  const { id } = req.params
+
+  const existing = await prisma.ticket.findUnique({
+    where: { id },
+    select: {
+      subject: true,
+      updatedAt: true,
+      messages: {
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: { direction: true, fromName: true, fromEmail: true, body: true, createdAt: true },
+      },
+    },
+  })
+  if (!existing) {
+    res.status(404).json({ error: 'Ticket not found' })
+    return
+  }
+
+  let summary: string
+  try {
+    summary = await summarizeTicket({ subject: existing.subject, messages: existing.messages })
+  } catch (err) {
+    console.error('Summarizing a ticket failed:', err)
+    res.status(502).json({ error: describeAiError(err) })
+    return
+  }
+
+  // An explicit updatedAt overrides @updatedAt.
+  await prisma.ticket.updateMany({ where: { id }, data: { summary, updatedAt: existing.updatedAt } })
+
+  const ticket = await findTicket(id)
+  if (!ticket) {
+    res.status(404).json({ error: 'Ticket not found' })
+    return
+  }
+  const body: TicketResponse = { ticket }
+  res.json(body)
 })
 
 // Tickets without a requester name sort last either way; unassigned tickets

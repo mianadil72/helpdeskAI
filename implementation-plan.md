@@ -103,7 +103,7 @@ Based on `project-scope.md` and `tech-stack.md`. Each phase ends with something 
 - [ ] Record agent overrides to measure classification accuracy
 - [ ] Summary prompt for a ticket's message thread
 - [ ] Background job: generate/refresh summary when a new message arrives
-- [ ] Show summary on the ticket detail page
+- [x] Show summary on the ticket detail page, with an on-demand "Summarize" button (gpt-5-nano via the Vercel AI SDK)
 - [ ] Graceful failure: if the AI call fails, the ticket still works and the job retries
 - [ ] Tests with a mocked AI client (valid output, invalid output, API failure)
 

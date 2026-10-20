@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   findFirstUser: vi.fn(),
   isAiConfigured: vi.fn(),
   polishReply: vi.fn(),
+  summarizeTicket: vi.fn(),
   describeAiError: vi.fn(),
 }))
 
@@ -22,6 +23,7 @@ vi.mock('../auth.js', () => ({ auth: { handler: vi.fn(), api: { getSession: mock
 vi.mock('../ai.js', () => ({
   isAiConfigured: mocks.isAiConfigured,
   polishReply: mocks.polishReply,
+  summarizeTicket: mocks.summarizeTicket,
   describeAiError: mocks.describeAiError,
 }))
 
@@ -469,6 +471,82 @@ describe('POST /api/tickets/:id/replies/polish', () => {
     signInAs(null)
     expect((await request(app).post('/api/tickets/t1/replies/polish').send({ body: 'Hi' })).status).toBe(401)
     expect(mocks.polishReply).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /api/tickets/:id/summary', () => {
+  const thread = {
+    subject: "Can't log in",
+    updatedAt,
+    messages: [
+      { direction: 'inbound', fromName: 'Stu', fromEmail: 'stu@example.com', body: 'Help', createdAt },
+      { direction: 'outbound', fromName: 'Sam', fromEmail: 'sam@example.com', body: 'Reset it', createdAt: updatedAt },
+    ],
+  }
+
+  beforeEach(() => {
+    mocks.isAiConfigured.mockReturnValue(true)
+    // First the thread for the AI, then the ticket for the response.
+    mocks.findUnique.mockResolvedValueOnce(thread).mockResolvedValue({ ...detail, summary: 'Stu cannot log in.' })
+    mocks.summarizeTicket.mockResolvedValue('Stu cannot log in.')
+    mocks.updateMany.mockResolvedValue({ count: 1 })
+  })
+
+  it('summarizes the whole thread, saves it without bumping updatedAt and returns the ticket', async () => {
+    const res = await request(app).post('/api/tickets/t1/summary')
+
+    expect(res.status).toBe(200)
+    expect(res.body.ticket.summary).toBe('Stu cannot log in.')
+    expect(mocks.findUnique.mock.calls[0][0]).toMatchObject({
+      where: { id: 't1' },
+      select: { messages: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] } },
+    })
+    expect(mocks.summarizeTicket).toHaveBeenCalledWith({ subject: "Can't log in", messages: thread.messages })
+    expect(mocks.updateMany).toHaveBeenCalledWith({
+      where: { id: 't1' },
+      data: { summary: 'Stu cannot log in.', updatedAt },
+    })
+  })
+
+  it('lets admins summarize too', async () => {
+    signInAs('admin')
+    expect((await request(app).post('/api/tickets/t1/summary')).status).toBe(200)
+  })
+
+  it('returns 404 for an unknown ticket', async () => {
+    mocks.findUnique.mockReset().mockResolvedValue(null)
+    const res = await request(app).post('/api/tickets/missing/summary')
+    expect(res.status).toBe(404)
+    expect(mocks.summarizeTicket).not.toHaveBeenCalled()
+  })
+
+  it('returns 503 when AI is not configured', async () => {
+    mocks.isAiConfigured.mockReturnValue(false)
+    const res = await request(app).post('/api/tickets/t1/summary')
+    expect(res.status).toBe(503)
+    expect(res.body).toEqual({ error: 'AI summaries are not configured' })
+    expect(mocks.summarizeTicket).not.toHaveBeenCalled()
+  })
+
+  it('returns 502 with an explanation and saves nothing when the AI call fails', async () => {
+    const error = new Error('no credits')
+    mocks.summarizeTicket.mockRejectedValue(error)
+    mocks.describeAiError.mockReturnValue('The AI provider account is out of credits. Ask an admin to add credits.')
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const res = await request(app).post('/api/tickets/t1/summary')
+
+    expect(res.status).toBe(502)
+    expect(res.body).toEqual({ error: 'The AI provider account is out of credits. Ask an admin to add credits.' })
+    expect(mocks.describeAiError).toHaveBeenCalledWith(error)
+    expect(mocks.updateMany).not.toHaveBeenCalled()
+    consoleError.mockRestore()
+  })
+
+  it('returns 401 when signed out', async () => {
+    signInAs(null)
+    expect((await request(app).post('/api/tickets/t1/summary')).status).toBe(401)
+    expect(mocks.summarizeTicket).not.toHaveBeenCalled()
   })
 })
 
